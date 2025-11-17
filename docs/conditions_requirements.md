@@ -25,6 +25,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Haptic**: Distance-based vibration intensity (closer = stronger)
 - **Visual**: Distance overlay on detected objects
 
+### CNN Adaptation
+- **Input**: Standard resolution (224x224)
+- **Processing**: Enhanced edge detection for fine details
+- **Output**: Distance estimation head with 3 zones (near <1m, medium 1-3m, far >3m)
+
 ---
 
 ## 2. Cataracts
@@ -49,6 +54,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Audio**: Clear, detailed descriptions
 - **Visual**: High-contrast bounding boxes and labels
 - **Haptic**: Standard patterns
+
+### CNN Adaptation
+- **Input**: Contrast-enhanced preprocessing (histogram equalization)
+- **Processing**: Edge detection emphasis in feature extraction
+- **Output**: High-confidence bounding boxes with thick borders
 
 ---
 
@@ -75,6 +85,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Haptic**: Left/right directional patterns for side objects
 - **Visual**: Highlight peripheral detections prominently
 
+### CNN Adaptation
+- **Input**: Standard resolution with zone masking
+- **Processing**: Separate attention mechanisms for center (0-40% width) vs peripheral (40-100% width)
+- **Output**: Zone-specific object detection with priority scoring (peripheral objects get higher urgency)
+
 ---
 
 ## 4. AMD (Age-related Macular Degeneration)
@@ -99,6 +114,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Audio**: "Text detected, magnifying center", "Object at screen edge"
 - **Visual**: Auto-zoom on text regions, edge object highlighting
 - **Haptic**: Standard patterns
+
+### CNN Adaptation
+- **Input**: Center crop (40% center region) for text detection, full frame for edge objects
+- **Processing**: Dual-path architecture - high-res center path, full-frame edge path
+- **Output**: Edge object priority scoring, center text region detection
 
 ---
 
@@ -125,6 +145,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Visual**: Filtered, artifact-free overlays
 - **Haptic**: Standard patterns
 
+### CNN Adaptation
+- **Input**: Artifact filtering preprocessing (median filter, inpainting)
+- **Processing**: Robust feature extraction with noise tolerance
+- **Output**: Confidence threshold adjustment (lower threshold for affected regions)
+
 ---
 
 ## 6. Retinitis Pigmentosa
@@ -149,6 +174,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Audio**: Enhanced volume, clear descriptions
 - **Visual**: Brightness-enhanced, high-contrast display
 - **Haptic**: Stronger patterns in low light
+
+### CNN Adaptation
+- **Input**: Low-light enhancement (gamma correction, histogram stretching)
+- **Processing**: Low-light optimized feature extraction
+- **Output**: Standard detection with enhanced confidence in low-light conditions
 
 ---
 
@@ -175,6 +205,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Visual**: Color-coded labels, optional correction filter
 - **Haptic**: Standard patterns
 
+### CNN Adaptation
+- **Input**: Standard RGB input
+- **Processing**: Color classification head (12 color categories: red, green, blue, yellow, orange, purple, pink, brown, black, white, gray, cyan)
+- **Output**: Object class + color classification for each detection
+
 ---
 
 ## 8. CVI (Cortical Visual Impairment)
@@ -199,6 +234,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Audio**: Simple, consistent descriptions ("Door ahead. 2 meters.")
 - **Visual**: Minimal, simplified overlays
 - **Haptic**: Single pattern at a time
+
+### CNN Adaptation
+- **Input**: Standard resolution
+- **Processing**: Simplified feature extraction, single-object focus
+- **Output**: Top-1 object only, simplified class names, consistent format
 
 ---
 
@@ -225,6 +265,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Visual**: Distance overlays
 - **Haptic**: Distance-based intensity
 
+### CNN Adaptation
+- **Input**: Standard resolution
+- **Processing**: Monocular depth estimation (using object size + position cues)
+- **Output**: Enhanced distance estimation with 5 zones (very close <0.5m, close 0.5-1m, medium 1-3m, far 3-5m, very far >5m)
+
 ---
 
 ## 10. Strabismus (Crossed Eyes)
@@ -250,6 +295,11 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Visual**: Single-object focus, clear positioning
 - **Haptic**: Standard patterns
 
+### CNN Adaptation
+- **Input**: Standard resolution
+- **Processing**: Single-object attention mechanism (suppress multiple detections)
+- **Output**: Top-1 object with highest confidence, clear spatial positioning
+
 ---
 
 ## Cross-Condition Requirements
@@ -271,3 +321,10 @@ This document maps each of the 10 vision conditions to specific technical requir
 - **Accuracy**: >85% object detection in varied environments
 - **Battery**: <12% per hour normal use
 - **Offline**: All core features work without internet
+
+### CNN Architecture Requirements
+- **Backbone**: ResNet50 (pretrained on ImageNet)
+- **Parameters**: ~25M total
+- **Input Size**: 224x224x3 (RGB)
+- **Multi-task Heads**: Classification, Localization, Description, Urgency, Distance
+- **Audio Fusion**: Optional audio branch for sound-aware understanding
