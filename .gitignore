@@ -79,3 +79,4 @@ logs/
 *.onnx
 *.tflite
 *.mlmodel
+Miniforge3-MacOSX-arm64.sh
