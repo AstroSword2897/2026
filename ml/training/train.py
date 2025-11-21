@@ -1,11 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.utils.data 
-import DataLoader
+from torch.utils.data import DataLoader
 from typing import Dict, Optional
 from pathlib import Path
-import copy
 
 try:
     from torch.amp import autocast
@@ -13,6 +11,8 @@ try:
     AMP_AVILABLE = True
 except ImportError:
     class DummyAutocast:
+        def __init__(self, *args, **kwargs):
+            return self
         def __enter__(self):
             return self
         def __exit__(self, *args):
@@ -81,7 +81,7 @@ class Trainer:
         self.patience_counter = 0
         
         # Mixed precision
-        self.use_mixed_precision = use_mixed_precision and AMP_AVAILABLE and device == 'cuda'
+        self.use_mixed_precision = use_mixed_precision and AMP_AVILABLE and device == 'cuda'
         if self.use_mixed_precision and GradScaler is not None:
             self.scaler = GradScaler()
         else:
@@ -136,14 +136,14 @@ class Trainer:
         """Get learning rate scale based on warmup and cosine decay"""
         if step < self.warmup_steps:
             # Linear warmup
-            return step / self.warmup_steps
+            return step / self.warmup_step 
         else:
             # Cosine decay after warmup
             progress = (step - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
             return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)).item())
     
     def _update_lr(self, step: int):
-        """Update learning rate with warmup + cosine schedule"""
+        ##Update learning rate with cosine schedule after a warmup
         lr_scale = self._get_lr_scale(step)
         for i, param_group in enumerate(self.optimizer.param_groups):
             base_lr = self.base_lr * 0.1 if i == 0 else self.base_lr  # Backbone vs heads
@@ -152,13 +152,13 @@ class Trainer:
         """Freeze ResNet backbone"""
         for param in self.backbone_params:
             param.requires_grad = False
-        print("✓ Backbone frozen")
+        print(" Backbone frozen")
     
     def unfreeze_backbone(self):
         """Unfreeze ResNet backbone"""
         for param in self.backbone_params:
             param.requires_grad = True
-        print("✓ Backbone unfrozen for fine-tuning")
+        print(" Backbone unfrozen for fine-tuning")
     
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         """Train for one epoch"""
@@ -308,7 +308,6 @@ class Trainer:
         # Set total steps for LR schedule
         self.total_steps = num_epochs * len(self.train_loader)
         
-        print(f"\n{'='*60}")
         print(f"Starting Training - {num_epochs} epochs")
         print(f"Device: {self.device}")
         print(f"Mixed Precision: {self.use_mixed_precision}")
@@ -319,7 +318,6 @@ class Trainer:
         
         for epoch in range(1, num_epochs + 1):
             print(f"\nEpoch {epoch}/{num_epochs}")
-            print("-" * 60)
             
             # Train
             train_metrics = self.train_epoch(epoch)
@@ -358,7 +356,7 @@ class Trainer:
                     if self.ema is not None:
                         self.ema.restore()
                     
-                    print(f"✓ Saved best model (val_loss: {self.best_val_loss:.4f})")
+                    print(f"Saved best model (val_loss: {self.best_val_loss:.4f})")
                 else:
                     self.patience_counter += 1
                     if self.patience_counter >= self.early_stopping_patience:
@@ -385,10 +383,7 @@ class Trainer:
         
         if self.ema is not None:
             self.ema.restore()
-        
-        print(f"\n{'='*60}")
-        print("Training Complete!")
+
         print(f"Best Val Loss: {self.best_val_loss:.4f}")
-        print(f"{'='*60}\n")
         
         return self.history
