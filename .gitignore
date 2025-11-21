@@ -75,3 +75,5 @@ logs/
 .env
 .env.local
 
+#Model
+Miniforge3-MacOSX-arm64.sh
