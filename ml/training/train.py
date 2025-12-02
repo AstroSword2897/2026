@@ -29,8 +29,8 @@ class EMA:
 
         for name, param in model.named_parameters():
             if param.requires_grad:
-                self.shadow[name] = param.data.clone()
-
+                self.shadow[name] = param.data.clone() 
+                
     def update(self):
         for name, param in self.model.named_parameters():
             if param.requires_grad and name in self.shadow:

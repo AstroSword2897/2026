@@ -1,4 +1,4 @@
-"""
+"""'''''''''''''
     Model quantization for mobile deployment (int8).
     The key idea:
         Reduce latency for a higher efficiency
@@ -12,13 +12,14 @@ from typing import Optional, Dict, Any, Union, List, Tuple
 from pathlib import Path
 import warnings
 from copy import deepcopy
+from ml.training.quantization import validate_quantized_model
 
 
 def fuse_maxsight_modules(model: nn.Module) -> nn.Module:
     """
     Fuse Conv+BN+ReLU patterns in MaxSight CNN architecture.
     
-    Automatically detects and fuses Sequential modules with Conv+BN+ReLU patterns.
+    Automatically detects and fuses sequential modules with designated patterns.
     Works with:
     - SimplifiedFPN lateral_convs and fpn_convs
     - detection_fusion, detection_head
@@ -83,42 +84,7 @@ def quantize_model_int8(
     backend: str = 'qnnpack',  # Default to ARM for iOS deployment
     fuse_modules: bool = True
 ) -> nn.Module:
-    """
-    Quantize model to int8.
-
-    - MaxSight-specific module fusion
-    - Per-channel weight quantization for ARM/iOS (qnnpack, this will be useful for the Native app dev)
-    - Robust error handling (off of the quantization)
     
-    Arguments:
-        model: MaxSightCNN 
-        calibration_data: DataLoader for calibration
-        num_calibration_batches: Number of batches to use for calibration
-        backend: Quantization backend ('qnnpack' for ARM/iOS, 'fbgemm' for x86)
-        fuse_modules: Whether to fuse common module patterns (Conv+BN+ReLU)
-    
-    Returns:
-        Quantized model ready for ExecuTorch export
-    
-    Usage:
-        # Week 1 pipeline integration
-        model_fp32 = create_model()
-        model_fp32.load_state_dict(torch.load('checkpoint.pth'))
-        
-        # Quantize for iOS deployment
-        model_int8 = quantize_model_int8(
-            model_fp32,
-            calibration_data=val_loader,
-            backend='qnnpack',  # ARM backend for iPhone
-            num_calibration_batches=20
-        )
-        
-        # Validate accuracy
-        validation = validate_quantized_model(model_fp32, model_int8, test_images)
-        
-        # Export to ExecuTorch (Week 2)
-        # ... export to .pte format
-    """
     # Create a copy to avoid modifying original model
     model = deepcopy(model)
     model.eval()
@@ -136,13 +102,12 @@ def quantize_model_int8(
     # Set quantization config with proper API usage
     if backend == 'qnnpack':
         # ARM/iOS backend - REQUIRES per-channel weight quantization for stability
-        model.qconfig = quantization.get_default_qconfig('qnnpack')  # type: ignore
+        model.qconfig = quantization.get_default_qconfig('qnnpack') 
         # Critical: per-channel weight quantization for mobile CNN stability
         if model.qconfig is not None:
-            model.qconfig.weight = quantization.default_per_channel_weight_observer  # type: ignore
+            model.qconfig.weight = quantization.default_per_channel_weight_observer
     elif backend == 'fbgemm':
-        # x86 backend
-        model.qconfig = quantization.get_default_qconfig('fbgemm')  # type: ignore
+        model.qconfig = quantization.get_default_qconfig('fbgemm')
     else:
         raise ValueError(f"Unsupported backend: {backend}. Use 'qnnpack' (ARM) or 'fbgemm' (x86)")
     
@@ -150,17 +115,17 @@ def quantize_model_int8(
     model_prepared = quantization.prepare(model, inplace=False)
     
     # Calibrate with sample data
-    print(f"Calibrating model for quantization using {num_calibration_batches} batches...")
+    print(f"Calibrating model for quantization using {num_calibration_batches} batches")
     
     if calibration_data is None:
         # Create dummy calibration data with realistic variations
         print("Warning: No calibration data provided. Using synthetic data.")
         dummy_inputs = [torch.randn(1, 3, 224, 224) for _ in range(num_calibration_batches)]
-        calibration_data = [(inp,) for inp in dummy_inputs]  # type: ignore
+        calibration_data = [(inp,) for inp in dummy_inputs] 
     
     batch_count = 0
     with torch.no_grad():
-        for batch in calibration_data:  # type: ignore
+        for batch in calibration_data:
             if isinstance(batch, (list, tuple)):
                 inputs = batch[0]
             elif isinstance(batch, dict):
@@ -187,10 +152,10 @@ def quantize_model_int8(
         raise RuntimeError("No batches successfully processed during calibration")
     
     # Convert to quantized model - USE MODERN API
-    print("Converting to int8...")
+    print("Converting to int8")
     model_int8 = quantization.convert(model_prepared, inplace=False)
     
-    print(f"✓ Quantization complete ({batch_count} calibration batches used)")
+    print(f" Quantization complete ({batch_count} calibration batches used)")
     print(f"  Backend: {backend} ({'ARM/iOS ready' if backend == 'qnnpack' else 'x86'})")
     return model_int8
 
@@ -204,7 +169,7 @@ def compare_model_sizes(
     """
     Compare model sizes (FP32 vs INT8) with optional disk size measurement.
     
-    Args:
+    Arguments:
         model_fp32: Original FP32 model
         model_int8: Quantized INT8 model
         save_models: Whether to save models and measure actual disk size
@@ -275,14 +240,14 @@ def compute_tensor_differences(
     rel_diff = diff / (torch.abs(t1_float) + 1e-8)
     max_rel_diff = rel_diff.max().item()
 
-    result = {"max_relative_dif": max_rel_diff}
+    result: Dict[str, float] = {"max_relative_diff": max_rel_diff}
 
     if 'mse' in metrics:
         mse = torch.mean((t1_float - t2_float) ** 2).item()
         result['mse'] = mse
 
     if 'mae' in metrics:
-        mae = torch.mean((t1_float - t2_float) ** 2).item()
+        mae = torch.mean(torch.abs(t1_float - t2_float)).item()
         result['mae'] = mae
 
     # Cosine similarity
@@ -301,12 +266,12 @@ def print_quantization(
         validation: Dict[str, Any],
         verbose: bool = True
 ) -> None:
-    print("\nModel Quantization Results")
-    print("\nModel Statistics")
+    print("\n Model Quantization Results")
+    print("\n Model Statistics")
     print(f" Total Parameters: {size_info['total_parameters']:,}")
     print(f" Trainable Parameters: {size_info['trainable_parameters']:,}")
 
-    print("\nSize Comparison FP32 size:")
+    print(f"\nSize Comparison FP32 size: {size_info['fp32_size_mb']:.1f} MB")
     if size_info['int8_size_mb'] is not None:
         print(f"  INT8 Size (est):  {size_info['int8_size_mb']:.1f} MB")
         print(f"  Compression:      {size_info['compression_ratio']:.1f}x")
@@ -326,8 +291,8 @@ def print_quantization(
             print(f"  Avg Accuracy Loss:  {validation['avg_relative_difference'] * 100:.2f}%")
         else:
             print(f"  Accuracy Loss:      {validation['accuracy_loss_percent']:.2f}%")
-        print(f"  Target:             <1%")
-        print(f"  Status:             {'Met' if validation.get('meets_tolerance', False) else 'Not met'}")
+        print(f"  Target: <1%")
+        print(f"  Status: {'Met' if validation.get('meets_tolerance', False) else 'Not met'}")
         
         if verbose and 'additional_metrics' in validation:
             print("\nDetailed Metrics:")
@@ -339,4 +304,128 @@ def print_quantization(
                 elif values is not None:
                     print(f"  {metric.upper()}: {values:.6f}")
     else:
-        print(f"  Error: {validation.get('error', 'Unknown error')}")    
+        print(f"  Error: {validation.get('error', 'Unknown error')}")   
+
+def quantize_validation(
+    model_fp32: nn.Module, 
+    calibration_data: Optional[torch.utils.data.DataLoader] = None,
+    test_data: Optional[torch.utils.data.DataLoader] = None,
+    num_calibration_batches: int = 20,
+    backend: str = 'qnnpack',
+    output_dir: Optional[Path] = None,
+    tolerance: float = 0.01,
+) -> Dict[str, Any]:
+    print("Week 1 Quantization Pipeline")
+
+
+    # Quantize model
+
+    model_int8 = quantize_model_int8(
+        model = model_fp32,
+        calibration_data = calibration_data,
+        num_calibration_batches = num_calibration_batches,
+        backend = backend,
+        fuse_modules = True
+    )
+
+    # Compare the sizes
+
+    size_info = compare_model_sizes(
+        model_fp32=model_fp32,
+        model_int8=model_int8,
+        save_models=(output_dir is not None),
+        output_dir=output_dir
+    )
+
+    print("Validating quantized model accuracy")
+    test_inputs = []
+    data_source = test_data if test_data is not None else calibration_data
+        
+    if data_source is not None:
+        batch_count = 0
+        for batch in data_source:
+            if isinstance(batch, (list, tuple)):
+                inputs = batch[0]
+            elif isinstance(batch, dict):
+                inputs = batch.get('images') or batch.get('input') or batch.get('data')
+            else:
+                inputs = batch
+                
+            if inputs is not None:
+                if hasattr(inputs, 'device') and inputs.device.type != 'cpu':
+                    inputs = inputs.cpu()
+                test_inputs.append(inputs)
+                batch_count += 1
+                if batch_count >= 5:  # Use 5 batches for validation
+                    break
+    if len(test_inputs) == 0: 
+        test_inputs = [torch.randn(1, 3, 224, 224) for _ in range(3)]
+        warnings.warn("No test - using synthetic dataset")
+
+    validation = validate_quantized_model(
+        model_fp32=model_fp32,
+        model_int8=model_int8,
+        test_inputs=test_inputs,
+        tolerance=tolerance,
+        metrics=['mse', 'mae', 'cosine']
+    )
+
+    print_quantization(size_info, validation, verbose=True)
+
+    ready_for_export = (
+        size_info.get('meets_target', False) and
+        validation.get('meets_tolerance', False)
+    )
+
+    if output_dir is not None: 
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        int8_path = output_dir / "model_int8.pth"
+        torch.save(model_int8.state_dict(), int8_path)
+        print(f" Saved quantized model to {int8_path}")
+              
+    # Save the summary of the results
+
+    results_summary = {
+        'size_info': size_info,
+        'validation': validation,
+        'ready_for_export': ready_for_export,
+        'backend': backend
+    }
+
+    import json
+    summary_path = output_dir / "quantization_summary.json"
+    # Convert to JSON-serializable format
+    def _to_jsonable(v: Any) -> Any:
+        #Recursively convert values to JSON-serializable types.
+            if isinstance(v, (int, float, bool, str)) or v is None:
+                return v
+            elif isinstance(v, dict):
+                return {k: _to_jsonable(v2) for k, v2 in v.items()}
+            elif isinstance(v, (list, tuple)):
+                return [_to_jsonable(x) for x in v]
+            else:
+                return str(v)
+
+    json_summary = {k: _to_jsonable(v) for k, v in results_summary.items()}
+
+    with open(summary_path, 'w') as f:
+        json.dump(json_summary, f, indent=2)
+    
+    
+    if ready_for_export:
+        print("✅ QUANTIZATION COMPLETE - Sprint complete")
+    else:
+        print("⚠️  QUANTIZATION COMPLETE - Model may need tuning before export")
+        if not size_info.get('meets_target', False):
+            print("Size target does not met")
+        if not validation.get('meets_tolerance', False):
+            print(" Accuracy loss higher than intended")
+    
+    return {
+        'model_int8': model_int8,
+        'size_info': size_info,
+        'validation': validation,
+        'ready_for_export': ready_for_export
+    }

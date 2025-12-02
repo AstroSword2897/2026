@@ -19,7 +19,6 @@ def generate_evaluation_report(
     
     # Overall performance metrics section
     report.append("Overall Performance Metrics:")
-    report.append("-" * 70)
     report.append(f" Loss: {metrics.get('loss', 0.0):.4f}")
     report.append(f" Accuracy: {metrics.get('accuracy', 0.0):.2f}%")
     report.append(f" Precision: {metrics.get('precision', 0.0):.4f}  (TP / (TP + FP))")

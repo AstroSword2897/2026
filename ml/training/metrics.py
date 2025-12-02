@@ -15,7 +15,7 @@ Key improvements:
 
 6. Per-size metrics (small/medium/large objects)
 
-C/mplexity: O(N_pred * N_gt) per image for matching, O(C) for per-class metrics
+Complexity: O(N_pred * N_gt) per image for matching, O(C) for per-class metrics
 Relationship: Core evaluation component - used by ProductionTrainer.validate()
 """
 
@@ -86,8 +86,8 @@ class DetectionMetrics:
     Improvements over original:
     - Proper AP calculation with precision-recall curves
     - Stores predictions with scores for ranking
-    - Vectorized IoU computation (10-100x faster)
-    - Device-aware tensor initialization
+    - Vectorized IoU computation
+    - Tensor initialization
     - COCO-style multi-threshold mAP
     - Per-size metrics (small/medium/large)
     """
@@ -101,19 +101,11 @@ class DetectionMetrics:
     ):
 
         self.image_size = image_size
-        """
-        Initialize metrics calculator.
-        
-        Arguments:
-            num_classes: Number of object classes
-            iou_thresholds: List of IoU thresholds for mAP (default [0.5])
-            device: Device for tensor allocation (default: CPU)
-        """
         self.num_classes = num_classes
         self.iou_thresholds = iou_thresholds
         self.device = device or torch.device('cpu')
-        
         self.reset()
+        
     
     def reset(self, device: Optional[torch.device] = None):
       
@@ -149,12 +141,11 @@ class DetectionMetrics:
         tiny signs, etc.). Tracking metrics by size helps identify these issues.
         
         Arguments:
-            box: [4] tensor (cx, cy, w, h) in normalized coordinates [0, 1]
+            box: 4d tensor in normalized coordinates [0, 1]
         
         Returns:
             'small', 'medium', or 'large'
         """
-        area = box[2] * box[3]  # width * height - normalized area
         
         # Compute normalized area based off of dimensions in pixels
         # 32^2 - small
@@ -185,20 +176,22 @@ class DetectionMetrics:
         Update metrics with predictions and ground truth (improved matching).
         
         Improvements:
-        - Vectorized IoU computation (10-100x faster then looped iteration)
+        - Vectorized IoU computation (10-100x faster than looped iteration)
         - Stores predictions with scores for proper AP calculation
         - Handles device placement correctly
         - Tracks per-size metrics
         """
-        # First thing: make sure all tensors are on the same device
-        # This is critical - if pred_boxes is on GPU and gt_boxes is on CPU,
-        # PyTorch will throw a device mismatch error. Always move to self.device.
-        pred_boxes = pred_boxes.to(self.device)
-        pred_labels = pred_labels.to(self.device)
-        pred_scores = pred_scores.to(self.device)
-        gt_boxes = gt_boxes.to(self.device)
-        gt_labels = gt_labels.to(self.device)
-        
+        # Make sure that all of the tensors are on the computation device
+        if pred_boxes.device != self.device:
+            pred_boxes = pred_boxes.to(self.device)
+        if pred_labels.device != self.device:
+            pred_labels = pred_labels.to(self.device)
+        if pred_scores.device != self.device:
+            pred_scores = pred_scores.to(self.device)
+        if gt_boxes.device != self.device:
+            gt_boxes = gt_boxes.to(self.device)
+        if gt_labels.device != self.device:
+            gt_labels = gt_labels.to(self.device)
         # Count ground truth objects per class - needed for recall calculation
         # Recall = TP / (TP + FN) = TP / total_gt, so we need to know total_gt
         for gt_label in gt_labels:
@@ -231,7 +224,7 @@ class DetectionMetrics:
                     # Store as FP for AP calculation
                     box_area = (pred_box[2] * pred_box[3]).item()
                     self.class_predictions[class_idx].append(
-                        (pred_score.item(), False, box_area)
+                        (pred_score.item(), 0.0, None, box_area)  # CORRECT - no GT to match
                     )
                     
                     # Update size metrics
@@ -239,8 +232,7 @@ class DetectionMetrics:
                     self.size_metrics[size_cat]['fp'] += 1
             return
         
-        # Now the real matching logic - this is where the speed improvement happens
-        # Vectorized IoU computation - compute ALL IoUs at once (10-100x faster than loops!)
+        # Vectorized IoU computation off of all IoUs and then 
         # Result: [N_pred, N_gt] matrix where [i, j] = IoU between pred[i] and gt[j]
         iou_matrix = compute_iou_matrix(pred_boxes, gt_boxes)  # [N_pred, N_gt]
         
@@ -316,15 +308,14 @@ class DetectionMetrics:
                 size_cat = self._get_size_category(pred_box)
                 self.size_metrics[size_cat]['fp'] += 1
             
-            # Store prediction for AP calculation - this is critical!
-            # AP requires predictions sorted by confidence, so we store them here
+            # AP confidence storing off of predictions for class
             # Format: (confidence_score, is_tp, box_area)
             # We'll sort by confidence later when computing the precision-recall curve
             self.class_predictions[pred_class].append(
-                (pred_score, is_tp, box_area)
+                (pred_score, best_iou, best_gt_idx, box_area) 
             )
         
-        # Finally, check for false negatives: ground truth boxes that never got matched
+        # Check if ground truth boxes did not get matched
         # These are objects that exist in the image but the model didn't detect them
         # This happens when the model misses objects (common with small objects or
         # objects in difficult lighting conditions)
@@ -393,69 +384,65 @@ class DetectionMetrics:
         return 2 * (precision * recall) / denominator if denominator > 0 else 0.0
     
     def compute_ap(self, class_idx: int, iou_threshold: float = 0.5) -> float:
-        """
-        Compute Average Precision (AP) for a single class
-        
-        Arguments:
-            class_idx: Class index to compute AP for
-            iou_threshold: IoU threshold for matching (default 0.5)
-        
-        Returns:
-            AP score (0.0 to 1.0)
-        """
-        # Get all predictions for this class
+    
         predictions = self.class_predictions.get(class_idx, [])
         total_gt = self.class_gt_counts[class_idx].item()
         
-        # Edge cases: no predictions or no ground truth
         if len(predictions) == 0 or total_gt == 0:
             return 0.0
         
-        # Sort by confidence (descending) - should already be sorted, but be safe
-        # Predictions are stored as (confidence, is_tp, box_area) tuples
         predictions.sort(key=lambda x: x[0], reverse=True)
         
-        # Build precision-recall curve by going through predictions in order
-        tp_cumsum = 0  # Cumulative true positives
-        fp_cumsum = 0  # Cumulative false positives
-        precisions = []  # Precision at each threshold
-        recalls = []     # Recall at each threshold
+        # Track which GT boxes have been matched (for this IoU threshold)
+        matched_gt_indices = set()
+        tp_cumsum = 0
+        fp_cumsum = 0
+        precisions = []
+        recalls = []
         
-        for confidence, is_tp, box_area in predictions:
-            # Update cumulative counts
-            if is_tp:
-                tp_cumsum += 1  # Found a true positive
+        for pred_data in predictions:
+            # Handle both old format (score, is_tp, area) and new format (score, best_iou, matched_gt_idx, area)
+            if len(pred_data) == 3:
+                # Legacy format: (score, is_tp, area) - use is_tp directly
+                confidence, is_tp, _ = pred_data
+                is_tp_at_threshold = is_tp if isinstance(is_tp, bool) else (pred_data[1] >= iou_threshold)
             else:
-                fp_cumsum += 1  # Found a false positive
+                # New format: (score, best_iou, matched_gt_idx, area)
+                confidence, best_iou, matched_gt_idx, _ = pred_data
+                # Recompute TP/FP based on current IoU threshold
+                is_tp_at_threshold = (best_iou >= iou_threshold and 
+                                    matched_gt_idx is not None and 
+                                    matched_gt_idx not in matched_gt_indices)
+                if is_tp_at_threshold:
+                    matched_gt_indices.add(matched_gt_idx)
             
-            # Compute precision and recall at this threshold
-            # Precision: of all predictions so far, how many are correct?
-            precision = tp_cumsum / (tp_cumsum + fp_cumsum)
-            # Recall: of all ground truth objects, how many have we found so far?
-            recall = tp_cumsum / total_gt
+            if is_tp_at_threshold:
+                tp_cumsum += 1
+            else:
+                fp_cumsum += 1
             
+            precision = tp_cumsum / (tp_cumsum + fp_cumsum) if (tp_cumsum + fp_cumsum) > 0 else 0.0
+            recall = tp_cumsum / total_gt if total_gt > 0 else 0.0
             precisions.append(precision)
             recalls.append(recall)
         
-        # Compute AP using 11-point interpolation (COCO standard)
-        # This averages precision at 11 equally spaced recall levels: 0.0, 0.1, ..., 1.0
-        # For each recall level, we find the maximum precision at that recall or higher
+        # Full PR curve integration (trapezoidal rule)
         if len(precisions) == 0:
             return 0.0
+        
         pr_pairs = sorted(zip(recalls, precisions), key=lambda x: x[0])
         ap = 0.0
         prev_recall = 0.0
-        prev_precision = 1.0  # Start at precision=1.0 for recall=0
+        prev_precision = 1.0
         
         for recall, precision in pr_pairs:
-            # Trapezoidal rule: area = (recall - prev_recall) * (precision + prev_precision) / 2
             ap += (recall - prev_recall) * (precision + prev_precision) / 2.0
             prev_recall = recall
             prev_precision = precision
         
-        # Handle remaining area from last point to recall=1.0
         if prev_recall < 1.0:
             ap += (1.0 - prev_recall) * prev_precision
+        
         return ap
     
     def compute_map(self, iou_threshold: float = 0.5) -> float:
@@ -578,3 +565,45 @@ class DetectionMetrics:
             }
         
         return results
+    
+    def record_inference_time(self, inference_time_ms: float) -> None:
+        """
+        Record inference latency for a single forward pass.
+        
+        Args:
+            inference_time_ms: Inference time in milliseconds
+        """
+        self.inference_times.append(inference_time_ms)
+    
+    def get_latency_stats(self) -> Dict[str, float]:
+        """
+        Get latency statistics from recorded inference times.
+        
+        Returns:
+            Dictionary with mean, median, min, max, std latency in milliseconds
+        """
+        if len(self.inference_times) == 0:
+            return {
+                'mean_ms': 0.0,
+                'median_ms': 0.0,
+                'min_ms': 0.0,
+                'max_ms': 0.0,
+                'std_ms': 0.0,
+                'p95_ms': 0.0,
+                'p99_ms': 0.0
+            }
+        
+        times = np.array(self.inference_times)
+        return {
+            'mean_ms': float(np.mean(times)),
+            'median_ms': float(np.median(times)),
+            'min_ms': float(np.min(times)),
+            'max_ms': float(np.max(times)),
+            'std_ms': float(np.std(times)),
+            'p95_ms': float(np.percentile(times, 95)),
+            'p99_ms': float(np.percentile(times, 99))
+        }
+    
+    def reset_latency(self) -> None:
+        """Reset latency tracking."""
+        self.inference_times = []
