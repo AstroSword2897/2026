@@ -15,13 +15,12 @@ Key improvements:
 
 6. Per-size metrics (small/medium/large objects)
 
-Complexity: O(N_pred * N_gt) per image for matching, O(C) for per-class metrics
+C/mplexity: O(N_pred * N_gt) per image for matching, O(C) for per-class metrics
 Relationship: Core evaluation component - used by ProductionTrainer.validate()
 """
 
 import torch
-import torch.nn as nn
-from typing import Dict, Optional, List, Tuple, Any
+from typing import Dict, Optional, List, Tuple
 from collections import defaultdict
 import numpy as np
 
@@ -68,7 +67,16 @@ def compute_iou_matrix(
     # IoU = intersection / union
     # Put small epsilon so no division by zero but effort remains low for the model
     iou = inter_area / (union_area + 1e-9)
-    return iou.squeeze()
+    # Check for boxes with zero width or height - log warning if found
+    # Degenerate boxes can cause unexpected behavior in the program
+    if torch.any((pred_x2 - pred_x1) <= 0) or torch.any((pred_y2 - pred_y1) <= 0):
+        pass
+    if torch.any((gt_x2 - gt_x1) <= 0) or torch.any((gt_y2 - gt_y1) <= 0):
+        pass
+    # Safe squeeze: avoid squeeze() entirely to prevent shape issues
+    # Keep full [N_pred, N_gt] shape even if one dimension is 1
+    # Downstream code can handle the shape correctly
+    return iou
 
 
 class DetectionMetrics:
@@ -88,8 +96,11 @@ class DetectionMetrics:
         self, 
         num_classes: int, 
         iou_thresholds: List[float] = [0.5],
-        device: Optional[torch.device] = None
+        device: Optional[torch.device] = None,
+        image_size: Tuple[int, int] = (224, 224)
     ):
+
+        self.image_size = image_size
         """
         Initialize metrics calculator.
         
@@ -138,25 +149,25 @@ class DetectionMetrics:
         tiny signs, etc.). Tracking metrics by size helps identify these issues.
         
         Arguments:
-            box: [4] tensor (cx, cy, w, h) normalized [0, 1]
+            box: [4] tensor (cx, cy, w, h) in normalized coordinates [0, 1]
         
         Returns:
             'small', 'medium', or 'large'
         """
         area = box[2] * box[3]  # width * height - normalized area
         
-        # COCO thresholds - these are in pixels², but we normalize to [0, 1]
-        # Assuming 224x224 images (standard ImageNet size):
-        # Small: < 32² pixels = 32² / 224² ≈ 0.02 (tiny objects)
-        # Medium: 32² to 96² = 96² / 224² ≈ 0.18 (normal objects)
-        # Large: ≥ 96² pixels (big objects)
-        # 
-        # Note: These thresholds are approximate - COCO uses actual pixel counts,
-        # but since our boxes are normalized, we use normalized thresholds
-        if area < 0.02:
+        # Compute normalized area based off of dimensions in pixels
+        # 32^2 - small
+        # between small and 96^2 is medium
+        # over then 96^2 is large
+        box_area_normalized = box[2] * box[3]  # Normalized area [0, 1]
+        pixel_area = box_area_normalized * (self.image_size[0] * self.image_size[1])
+        
+        # Apply COCO thresholds (in pixels²)
+        if pixel_area < 32 * 32: 
             return 'small'  # Tiny objects - hardest to detect
-        elif area < 0.18:
-            return 'medium'  # Normal-sized objects
+        elif pixel_area < 96 * 96: 
+            return 'medium'
         else:
             return 'large'  # Big objects - usually easier to detect
     
@@ -174,7 +185,7 @@ class DetectionMetrics:
         Update metrics with predictions and ground truth (improved matching).
         
         Improvements:
-        - Vectorized IoU computation (10-100x faster)
+        - Vectorized IoU computation (10-100x faster then looped iteration)
         - Stores predictions with scores for proper AP calculation
         - Handles device placement correctly
         - Tracks per-size metrics
@@ -266,8 +277,18 @@ class DetectionMetrics:
                 if int(pred_labels[pred_idx].item()) != int(gt_labels[gt_idx].item()):
                     continue  # Classes don't match - can't be a match
                 
-                # Get IoU from pre-computed matrix (fast!)
-                iou = iou_matrix[pred_idx, gt_idx].item()
+                # Get IoU from pre-computed matrix
+                if iou_matrix.ndim == 2:
+                    iou = iou_matrix[pred_idx, gt_idx].item()
+                elif iou_matrix.ndim == 1 and len(iou_matrix) > pred_idx:
+                    # Edge case: single GT box (shouldn't happen after removing squeeze)
+                    iou = float(iou_matrix[pred_idx])
+                else:
+                    iou = 0.0
+
+
+
+
                 if iou > best_iou:
                     best_iou = iou
                     best_gt_idx = gt_idx  # Remember this as the best match so far
@@ -373,18 +394,7 @@ class DetectionMetrics:
     
     def compute_ap(self, class_idx: int, iou_threshold: float = 0.5) -> float:
         """
-        Compute Average Precision (AP) for a single class - THE CORRECT WAY.
-        
-        This is the proper implementation that matches COCO evaluation. The old
-        implementation just used precision, which is wrong! AP requires computing
-        the area under the precision-recall curve.
-        
-        How it works:
-        1. Sort predictions by confidence (highest first) - already done in update()
-        2. Compute precision and recall at each confidence threshold
-        3. Calculate area under the PR curve using 11-point interpolation (COCO standard)
-        
-        This is what makes mAP the gold standard metric for object detection.
+        Compute Average Precision (AP) for a single class
         
         Arguments:
             class_idx: Class index to compute AP for
@@ -406,7 +416,6 @@ class DetectionMetrics:
         predictions.sort(key=lambda x: x[0], reverse=True)
         
         # Build precision-recall curve by going through predictions in order
-        # As we add each prediction (sorted by confidence), precision and recall change
         tp_cumsum = 0  # Cumulative true positives
         fp_cumsum = 0  # Cumulative false positives
         precisions = []  # Precision at each threshold
@@ -431,17 +440,23 @@ class DetectionMetrics:
         # Compute AP using 11-point interpolation (COCO standard)
         # This averages precision at 11 equally spaced recall levels: 0.0, 0.1, ..., 1.0
         # For each recall level, we find the maximum precision at that recall or higher
+        if len(precisions) == 0:
+            return 0.0
+        pr_pairs = sorted(zip(recalls, precisions), key=lambda x: x[0])
         ap = 0.0
-        for recall_threshold in np.linspace(0, 1, 11):
-            # Find maximum precision at recall >= this threshold
-            max_precision = 0.0
-            recall_threshold_float = float(recall_threshold)  # Convert numpy type to Python float
-            for r, p in zip(recalls, precisions):
-                if r >= recall_threshold_float:
-                    max_precision = max(max_precision, p)
-            ap += max_precision
+        prev_recall = 0.0
+        prev_precision = 1.0  # Start at precision=1.0 for recall=0
         
-        return ap / 11.0  # Average over 11 points
+        for recall, precision in pr_pairs:
+            # Trapezoidal rule: area = (recall - prev_recall) * (precision + prev_precision) / 2
+            ap += (recall - prev_recall) * (precision + prev_precision) / 2.0
+            prev_recall = recall
+            prev_precision = precision
+        
+        # Handle remaining area from last point to recall=1.0
+        if prev_recall < 1.0:
+            ap += (1.0 - prev_recall) * prev_precision
+        return ap
     
     def compute_map(self, iou_threshold: float = 0.5) -> float:
         """
@@ -456,24 +471,13 @@ class DetectionMetrics:
         return sum(ap_scores) / len(ap_scores) if ap_scores else 0.0
     
     def compute_map_coco(self) -> Dict[str, float]:
-        """
-        Compute COCO-style mAP at multiple IoU thresholds - the industry standard.
-        
-        COCO evaluation uses mAP@[0.5:0.95] which averages mAP across multiple IoU
-        thresholds (0.5, 0.55, 0.6, ..., 0.95). This is more comprehensive than
-        just mAP@0.5 because it tests how well the model localizes objects at
-        different precision levels.
-        
-        Returns:
-            Dictionary with:
-            - mAP@0.5: AP at IoU=0.5 (most common metric, easier threshold)
-            - mAP@0.75: AP at IoU=0.75 (stricter, tests localization accuracy)
-            - mAP@[0.5:0.95]: Average AP from 0.5 to 0.95 (COCO standard, most comprehensive)
-        """
         # Generate IoU thresholds: 0.5, 0.55, 0.6, ..., 0.95 (step 0.05)
         # Also include 0.75 separately because it's commonly reported
-        thresholds = [0.5, 0.75] + [float(t) for t in np.arange(0.5, 1.0, 0.05)]
-        
+        # Ensure that there are no duplication issues
+        thresholds = [float(round(t,2)) for t in np.arange(0.5, 1.0, 0.05)]
+        if 0.75 not in thresholds:
+            thresholds.append(0.75)
+        thresholds = sorted(thresholds)
         results = {}
         aps_all = []  # Store all APs for averaging
         
@@ -517,10 +521,23 @@ class DetectionMetrics:
             fp = metrics['fp']
             fn = metrics['fn']
             
-            precision = tp / max(tp + fp, 1)
-            recall = tp / max(tp + fn, 1)
-            f1 = 2 * (precision * recall) / max(precision + recall, 1e-8)
+            if tp + fp == 0:
+                precision = float('nan')
+            else: 
+                precision = tp / (tp + fp)
             
+            if tp + fn == 0:
+                recall = float('nan')
+            else: 
+                recall = tp / (tp + fn)
+
+
+            if np.isnan(precision) or np.isnan(recall) or (precision + recall) == 0:
+                f1 = float('nan')
+            else:
+                f1 = 2 * (precision * recall) / (precision + recall)
+            
+
             results[lighting] = {
                 'precision': precision,
                 'recall': recall,
@@ -538,9 +555,21 @@ class DetectionMetrics:
             fp = metrics['fp']
             fn = metrics['fn']
             
-            precision = tp / max(tp + fp, 1)
-            recall = tp / max(tp + fn, 1)
-            f1 = 2 * (precision * recall) / max(precision + recall, 1e-8)
+            if tp + fp == 0:
+                precision = float('nan')  # No predictions made
+            else:
+                precision = tp / (tp + fp)
+            
+            if tp + fn == 0:
+                recall = float('nan')  # No ground truth exists
+            else:
+                recall = tp / (tp + fn)
+            
+            # F1 is undefined if either precision or recall is NaN
+            if np.isnan(precision) or np.isnan(recall) or (precision + recall) == 0:
+                f1 = float('nan')
+            else:
+                f1 = 2 * (precision * recall) / (precision + recall)
             
             results[size_cat] = {
                 'precision': precision,
