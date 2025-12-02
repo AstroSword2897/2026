@@ -4,22 +4,21 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from typing import Dict, Optional
 from pathlib import Path
+import math
 
 try:
     from torch.amp import autocast
     from torch.cuda.amp import GradScaler
-    AMP_AVILABLE = True
+    AMP_AVAILABLE = True
 except ImportError:
     class DummyAutocast:
-        def __init__(self, *args, **kwargs):
-            return self
         def __enter__(self):
             return self
         def __exit__(self, *args):
             pass
     autocast = DummyAutocast
     GradScaler = None
-    AMP_AVILABLE = False
+    AMP_AVAILABLE = False
 
 class EMA:
     def __init__(self, model: nn.Module, decay: float = 0.9999):
@@ -37,8 +36,8 @@ class EMA:
             if param.requires_grad and name in self.shadow:
                 self.shadow[name] = (
                     self.decay * self.shadow[name] + 
-                    (1 - self.decay) * param.data
-            )
+                    (1 - self.decay) * param.data.detach()
+                )
     def apply_shadow(self):
         for name, param in self.model.named_parameters():
             if param.requires_grad and name in self.shadow:
@@ -52,7 +51,7 @@ class EMA:
 
 
 class Trainer:
-    """Improved Trainer class for MaxSight CNN"""
+    # Training loop with mixed precision, EMA, and early stopping.
     
     def __init__(
         self,
@@ -81,7 +80,7 @@ class Trainer:
         self.patience_counter = 0
         
         # Mixed precision
-        self.use_mixed_precision = use_mixed_precision and AMP_AVILABLE and device == 'cuda'
+        self.use_mixed_precision = use_mixed_precision and AMP_AVAILABLE and (device == 'cuda' or str(device).startswith('cuda'))
         if self.use_mixed_precision and GradScaler is not None:
             self.scaler = GradScaler()
         else:
@@ -117,7 +116,9 @@ class Trainer:
         # Scheduler
         self.base_lr = learning_rate
         self.warmup_steps = warmup_epochs * len(train_loader)
-        self.total_steps = 0  # Track total training steps
+        # Track total training steps
+        self.total_steps = 0
+        self.global_step = 0
         
         # Cosine annealing (will be set in train())
         self.scheduler = None
@@ -133,32 +134,41 @@ class Trainer:
         self.best_val_loss = float('inf')
     
     def _get_lr_scale(self, step: int) -> float:
-        """Get learning rate scale based on warmup and cosine decay"""
+        """LR scale: linear warmup then cosine decay."""
         if step < self.warmup_steps:
             # Linear warmup
-            return step / self.warmup_step 
+            return max(1e-6, (step + 1) / max(1, self.warmup_steps))
         else:
             # Cosine decay after warmup
-            progress = (step - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
-            return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)).item())
+            den = max(1, self.total_steps - self.warmup_steps)
+            progress = min(1.0, max(0.0, (step - self.warmup_steps) / den)) 
+            return 0.5 * (1 + math.cos(progress * math.pi))
     
     def _update_lr(self, step: int):
-        ##Update learning rate with cosine schedule after a warmup
+        """Update LR using warmup + cosine schedule."""
         lr_scale = self._get_lr_scale(step)
         for i, param_group in enumerate(self.optimizer.param_groups):
             base_lr = self.base_lr * 0.1 if i == 0 else self.base_lr  # Backbone vs heads
             param_group['lr'] = base_lr * lr_scale
+    
     def freeze_backbone(self):
-        """Freeze ResNet backbone"""
+        #Freeze ResNet backbone and its BatchNorm layers.
         for param in self.backbone_params:
             param.requires_grad = False
-        print(" Backbone frozen")
+
+        #Freeze BatchNorm Running stats
+        for name, module in self.model.named_modules():
+            if any(x in name for x in ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']):
+                if isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
+                    module.eval()
+                    module.track_running_stats = False
+                    for p in module.parameters():
+                        p.requires_grad = False
     
     def unfreeze_backbone(self):
-        """Unfreeze ResNet backbone"""
+        """Unfreeze ResNet backbone."""
         for param in self.backbone_params:
             param.requires_grad = True
-        print(" Backbone unfrozen for fine-tuning")
     
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         """Train for one epoch"""
@@ -166,11 +176,14 @@ class Trainer:
         total_loss = 0.0
         total_samples = 0
         
-        # Freeze/unfreeze backbone
-        if epoch == 1:
-            self.freeze_backbone()
-        elif epoch == self.freeze_backbone_epochs + 1:
-            self.unfreeze_backbone()
+        # Freeze/unfreeze backbone dynamically
+        if self.freeze_backbone_epochs > 0:
+            if epoch <= self.freeze_backbone_epochs:
+                if not all(not p.requires_grad for p in self.backbone_params):
+                    self.freeze_backbone()
+            else:
+                if not all(p.requires_grad for p in self.backbone_params):
+                    self.unfreeze_backbone()
         
         self.optimizer.zero_grad()
         
@@ -181,7 +194,7 @@ class Trainer:
                 'boxes': batch['boxes'].to(self.device),
                 'urgency': batch.get('urgency', torch.zeros(images.size(0), dtype=torch.long)).to(self.device),
                 'distance': batch.get('distance', torch.zeros_like(batch['labels'])).to(self.device),
-                'num_objects': batch.get('num_objects', torch.tensor([batch['labels'].size(1)] * images.size(0)))
+                'num_objects': batch.get('num_objects', torch.full((images.size(0),), batch['labels'].size(1), device=self.device, dtype=torch.long))
             }
             
             # Update learning rate
@@ -192,33 +205,33 @@ class Trainer:
             if self.criterion is None:
                 raise ValueError("Criterion (loss function) must be provided to Trainer")
             
-            if self.use_mixed_precision and self.scaler is not None:
-                device_type = 'cuda' if self.device == 'cuda' else 'mps'  # Determine device type for autocast
-                with autocast(device_type=device_type):  # type: ignore  # FP16 forward pass (new API, type stubs may be outdated)
-                    outputs = self.model(images)
-                    loss_dict = self.criterion(outputs, targets)
-                    loss = loss_dict['total_loss'] / self.gradient_accumulation_steps
-                
-                self.scaler.scale(loss).backward()
-            else:
+            # Use AMP if available (speeds up on GPU, saves memory)
+            device_str = str(self.device)
+            with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',
+              enabled=self.use_mixed_precision):
                 outputs = self.model(images)
                 loss_dict = self.criterion(outputs, targets)
                 loss = loss_dict['total_loss'] / self.gradient_accumulation_steps
+            
+            if self.scaler:
+                self.scaler.scale(loss).backward()
+            else:
                 loss.backward()
             
-            # Gradient accumulation
+            # Gradient accumulation for the final batch
             if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
-                # Gradient clipping
-                if self.use_mixed_precision and self.scaler is not None:
+                if self.scaler:
                     self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
+                if self.scaler:
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                     self.optimizer.step()
-                
+
                 self.optimizer.zero_grad()
+
                 
                 # Update EMA after optimizer step
                 if self.ema is not None:
@@ -236,6 +249,21 @@ class Trainer:
                       f'Obj: {loss_dict["objectness_loss"].item():.4f}, '
                       f'LR: {current_lr:.6f}')
         
+        # Final partial accumalation - Handled
+        if (batch_idx + 1) % self.gradient_accumulation_steps != 0:
+            if self.scaler:
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                self.optimizer.step()
+
+            self.optimizer.zero_grad()
+            if self.ema:
+                self.ema.update()
+
         avg_loss = total_loss / len(self.train_loader)
         return {'loss': avg_loss}
     
@@ -250,8 +278,6 @@ class Trainer:
         
         self.model.eval()
         total_loss = 0.0
-        correct = 0
-        total = 0
         
         with torch.no_grad():
             for batch in self.val_loader:
@@ -261,44 +287,41 @@ class Trainer:
                     'boxes': batch['boxes'].to(self.device),
                     'urgency': batch.get('urgency', torch.zeros(images.size(0), dtype=torch.long)).to(self.device),
                     'distance': batch.get('distance', torch.zeros_like(batch['labels'])).to(self.device),
-                    'num_objects': batch.get('num_objects', torch.tensor([batch['labels'].size(1)] * images.size(0)))
+                    'num_objects': batch.get(
+                        'num_objects',
+                        torch.full(
+                            (images.size(0),),
+                            batch['labels'].size(1),
+                            device=self.device,
+                            dtype=torch.long
+                        )
+                    )
+
                 }
                 
                 if self.criterion is None:
                     raise ValueError("Criterion (loss function) must be provided to Trainer")
-                
-                if self.use_mixed_precision and self.scaler is not None:
-                    device_type = 'cuda' if self.device == 'cuda' else 'mps'  # Determine device type for autocast
-                    with autocast(device_type=device_type):  # type: ignore  # FP16 forward pass (new API, type stubs may be outdated)
+                if self.use_mixed_precision:
+                    device_str = str(self.device)
+                    with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',
+                                enabled=self.use_mixed_precision):
                         outputs = self.model(images)
                         loss_dict = self.criterion(outputs, targets)
+
                 else:
                     outputs = self.model(images)
                     loss_dict = self.criterion(outputs, targets)
                 
                 total_loss += loss_dict['total_loss'].item()
                 
-                # Calculate accuracy (top-1 classification)
-                # Use objectness to find most confident detection
-                for b in range(images.size(0)):
-                    obj_scores = outputs['objectness'][b]  # [N]
-                    top_idx = obj_scores.argmax()
-                    pred_cls = outputs['classifications'][b, top_idx].argmax()
-                    
-                    # Compare to first ground truth object
-                    gt_cls = targets['labels'][b, 0]
-                    if pred_cls == gt_cls:
-                        correct += 1
-                    total += 1
+                # TODO: Replace with mAP from DetectionMetrics (accuracy is wrong for detection)
         
         # Restore original weights
         if use_ema and self.ema is not None:
             self.ema.restore()
         
         avg_loss = total_loss / len(self.val_loader)
-        accuracy = 100.0 * correct / total if total > 0 else 0.0
-        
-        return {'loss': avg_loss, 'accuracy': accuracy}
+        return {'loss': avg_loss}
     
     def train(self, num_epochs: int, save_dir: str = 'checkpoints'):
         """Main training loop"""
@@ -308,13 +331,10 @@ class Trainer:
         # Set total steps for LR schedule
         self.total_steps = num_epochs * len(self.train_loader)
         
-        print(f"Starting Training - {num_epochs} epochs")
-        print(f"Device: {self.device}")
-        print(f"Mixed Precision: {self.use_mixed_precision}")
-        print(f"Gradient Accumulation: {self.gradient_accumulation_steps}")
-        print(f"EMA: {self.ema is not None}")
-        print(f"Warmup Epochs: {self.warmup_epochs}")
-        print(f"{'='*60}\n")
+        print(f"\nStarting Training - {num_epochs} epochs")
+        print(f"Device: {self.device}, Mixed Precision: {self.use_mixed_precision}")
+        print(f"Gradient Accumulation: {self.gradient_accumulation_steps}, EMA: {self.ema is not None}")
+        print(f"Warmup Epochs: {self.warmup_epochs}\n")
         
         for epoch in range(1, num_epochs + 1):
             print(f"\nEpoch {epoch}/{num_epochs}")
@@ -369,7 +389,6 @@ class Trainer:
             self.history['learning_rates'].append(current_lr)
             print(f"Learning Rate: {current_lr:.6f}")
         
-        # Save final model
         if self.ema is not None:
             self.ema.apply_shadow()
         
@@ -383,7 +402,21 @@ class Trainer:
         
         if self.ema is not None:
             self.ema.restore()
-
+        
+        # Save training history
+        history_path = save_path / 'training_history.json'
+        import json
+        with open(history_path, 'w') as f:
+            # JSON serialization form
+            json_history = {
+                'train_loss': [float(x) for x in self.history['train_loss']],
+                'val_loss': [float(x) for x in self.history['val_loss']],
+                'learning_rates': [float(x) for x in self.history['learning_rates']]
+            }
+            json.dump(json_history, f, indent=2)
+        
+        print(f"\nTraining Complete!")
         print(f"Best Val Loss: {self.best_val_loss:.4f}")
+        print(f"History saved to: {history_path}")
         
         return self.history
