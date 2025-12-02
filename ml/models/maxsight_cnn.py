@@ -6,7 +6,7 @@ import torchvision.models as models
 from typing import Dict, Optional, List
 
 
-# These are the different objects that are necessary for the CNN
+# These are the different objects that are a reference for the CNN
 COCO_BASE_CLASSES = [
     'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
     'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
@@ -17,7 +17,7 @@ COCO_BASE_CLASSES = [
     'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
     'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop',
     'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'hair drier', 'toothbrush'
 ]
 ACCESSIBILITY_CLASSES = [
     # Doors & entrances
@@ -327,9 +327,9 @@ class MaxSightCNN(nn.Module):
         )
         self.text_head = nn.Sequential(
             nn.Conv2d(256, 128, 3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
+            nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 1, 1)
+            nn.Conv2d(128, 1, 1)
         )
         self.scene_embedding = nn.Sequential(
             nn.Linear(scene_input_dim, 512),
@@ -581,7 +581,7 @@ class MaxSightCNN(nn.Module):
         confidence_threshold: float = 0.5,
         nms_threshold: float = 0.5,
         max_detections: int = 20
-    ) -> List[Dict]:
+    ) -> List[List[Dict]]:
         '''
         Arguments:
             outputs: Model forward pass outputs dictionary
@@ -632,7 +632,7 @@ class MaxSightCNN(nn.Module):
                 class_id = int(cls_idx[orig_idx].item())
                 distance_zone = int(torch.argmax(filtered_distances[orig_idx]).item())
                 class_name = COCO_CLASSES[class_id] if 0 <= class_id < len(COCO_CLASSES) else 'unknown'
-                distance =  DISTANCE_ZONES[distance_zone] if 0 <= distance_zone < len(COCO_CLASSES) else 'medium'
+                distance = DISTANCE_ZONES[distance_zone] if 0 <= distance_zone < len(DISTANCE_ZONES) else 'medium'
                 img_detections.append({
                     'class': class_id,
                     'class_name': class_name,
@@ -896,10 +896,11 @@ if __name__ == "__main__":
     # Test 7: Inference timing
     print("\n Test 7: Inference Latency")
     times = []
+    # The timing is off with unused input for loop
     with torch.no_grad():
-        for i in range(20):
+        for _ in range(20):
             start = time.time()
-            i = model(dummy_image)
+            _ = model(dummy_image)
             times.append((time.time() - start) * 1000)
     
     avg_time = sum(times) / len(times)
