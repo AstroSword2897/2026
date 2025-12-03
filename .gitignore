@@ -75,7 +75,5 @@ logs/
 .env
 .env.local
 
-# Model files (large)
-*.onnx
-*.tflite
-*.mlmodel
+#Model
+Miniforge3-MacOSX-arm64.sh
