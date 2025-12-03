@@ -772,13 +772,13 @@ class ProductionTrainer:
                     'val_map': val_map,  # Mean Average Precision
                     'lighting_metrics': {k: v for k, v in val_metrics.items() if any(light in k for light in ['bright', 'normal', 'dim', 'dark'])}  # Lighting-specific metrics
                 }, self.save_dir / 'best_model.pth')  # Save best model checkpoint
-                print(f"✓ Saved best model (val_loss: {val_loss:.4f}, recall: {val_recall:.4f})")
+                print(f" Saved best model (val_loss: {val_loss:.4f}, recall: {val_recall:.4f})")
             else:
                 # No improvement - increment patience counter for early stopping
                 # Complexity: O(1) - simple increment
                 self.patience_counter += 1
                 if self.patience_counter >= self.patience:
-                    print(f"\n⚠️  Early stopping triggered: No improvement for {self.patience} epochs")
+                    print(f"\n  Early stopping triggered: No improvement for {self.patience} epochs")
                     print(f"   Best val_loss: {self.best_val_loss:.4f}")
                     break  # Stop training early
             
@@ -992,7 +992,7 @@ if __name__ == "__main__":
     print("Creating MaxSight model...")
     print(f"  Using {NUM_CLASSES} classes (80 COCO + {NUM_CLASSES - 80} accessibility classes)")
     model = create_model(num_classes=NUM_CLASSES)
-    print(f"✓ Model created: {sum(p.numel() for p in model.parameters()):,} parameters\n")
+    print(f" Model created: {sum(p.numel() for p in model.parameters()):,} parameters\n")
     
     # Create dummy dataloaders (replace with real dataset)
     print("Creating dataloaders...")
@@ -1001,8 +1001,8 @@ if __name__ == "__main__":
         num_val=200,
         batch_size=8
     )
-    print(f"✓ Train batches: {len(train_loader)}")
-    print(f"✓ Val batches: {len(val_loader)}\n")
+    print(f" Train batches: {len(train_loader)}")
+    print(f" Val batches: {len(val_loader)}\n")
     
     # Test loss computation
     print("Testing loss computation...")
@@ -1021,7 +1021,7 @@ if __name__ == "__main__":
         outputs = model(images)
         losses = criterion(outputs, targets)
     
-    print("\n✓ Loss computation test:")
+    print("\n Loss computation test:")
     for k, v in losses.items():
         if isinstance(v, torch.Tensor):
             print(f"  {k}: {v.item():.4f}")
@@ -1029,7 +1029,6 @@ if __name__ == "__main__":
             print(f"  {k}: {v}")
     
     # Create trainer
-    print("\n" + "="*70)
     trainer = ProductionTrainer(
         model=model,
         train_loader=train_loader,
@@ -1044,9 +1043,7 @@ if __name__ == "__main__":
     history = trainer.train()
     
     # Export model
-    print("\n" + "="*70)
     print("Exporting model to iOS formats...")
-    print("="*70)
     
     # Load best model
     checkpoint = torch.load('checkpoints/best_model.pth', map_location=device)
@@ -1061,6 +1058,6 @@ if __name__ == "__main__":
         input_size=(1, 3, 224, 224)
     )
     
-    print("\n✅ Training system ready!")
-    print("✅ Model exported for iOS deployment!")
+    print("\n Training system ready!")
+    print(" Model exported for iOS deployment!")
 
