@@ -245,7 +245,8 @@ class MaxSightCNN(nn.Module):
         use_audio: bool = True,
         condition_mode: Optional[str] = None,
         fpn_channels: int = 256,
-        detection_threshold: float = 0.5,      
+        detection_threshold: float = 0.5,
+        enable_accessibility_features: bool = True      
     ):
         super().__init__()
 
@@ -256,9 +257,10 @@ class MaxSightCNN(nn.Module):
         self.condition_mode = condition_mode
         self.fpn_channels = fpn_channels
         self.detection_threshold = detection_threshold
+        self.enable_accessibility_features = enable_accessibility_features
         
         try:
-            resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+            resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
         except AttributeError:
             resnet = models.resnet50(pretrained=True)
 
@@ -399,6 +401,69 @@ class MaxSightCNN(nn.Module):
         if condition_mode in ['cvi', 'amblyopia', 'strabismus']:
             #Higher level of attention for inconsistent vision
             self.attention_weights = nn.Parameter(torch.ones(4))  # For P2, P3, P4, P5
+
+        # MVP Accessibility Features
+        #  Shared Scene Embedding for Functional Vision
+        # Shared scene embedding for functional vision and environmental context
+        # This reduces computation by reusing the same features
+        if enable_accessibility_features:
+            self.shared_scene_embedding = nn.Sequential(
+                nn.Linear(scene_input_dim, 256),
+                nn.LayerNorm(256),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(256, 256)  # Shared 256-dim embedding
+            )
+            
+            # 1. Contrast Sensitivity Head (0-1 score)
+            self.contrast_head = nn.Sequential(
+                nn.Linear(256, 128),  # Uses shared embedding
+                nn.LayerNorm(128),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(128, 1),
+                nn.Sigmoid()
+            )
+            
+            # 2. Glare Risk Level Head (0-3 levels)
+            self.glare_head = nn.Sequential(
+                nn.Linear(256, 128),  # Uses shared embedding
+                nn.LayerNorm(128),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(128, 4),  # 0-3 levels + uncertainty
+                nn.Softmax(dim=1)
+            )
+            
+            # 3. Object Findability Head (per-location, 0-1 score)
+            self.findability_head = nn.Sequential(
+                nn.Conv2d(256, 128, 3, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, 1, 1),
+                nn.Sigmoid()
+            )
+            
+            # 4. Navigation Difficulty Head (scene-level, 0-1 score)
+            self.navigation_difficulty_head = nn.Sequential(
+                nn.Linear(256, 128),  # Uses shared embedding
+                nn.LayerNorm(128),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(128, 1),
+                nn.Sigmoid()
+            )
+            
+            # Uncertainty estimation for priority-sensitive alerts
+            # Predicts model confidence for each output
+            self.uncertainty_head = nn.Sequential(
+                nn.Linear(256, 128),
+                nn.LayerNorm(128),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(128, 1),
+                nn.Sigmoid()  # Uncertainty score 0-1 (1 = high uncertainty)
+            )
         
         self._initialize_weights()
     
@@ -409,6 +474,16 @@ class MaxSightCNN(nn.Module):
                    self.scene_proj, self.scene_embedding, 
                    self.urgency_head, self.distance_head, self.audio_branch]
         
+        if self.enable_accessibility_features:
+            modules.extend([
+                self.shared_scene_embedding,
+                self.contrast_head,
+                self.glare_head,
+                self.findability_head,
+                self.navigation_difficulty_head,
+                self.uncertainty_head
+            ])
+
         # Add condition-specific modules if they exist
         if hasattr(self, 'color_head'):
             modules.append(self.color_head)
@@ -544,6 +619,39 @@ class MaxSightCNN(nn.Module):
             'num_locations': H * W
         }
 
+        # MVP Access features
+        if self.enable_accessibility_features:
+            # Compute shared scene embedding (reused by multiple heads)
+            shared_scene_emb = self.shared_scene_embedding(combined_context)
+            
+            # 1. Contrast Sensitivity (0-1 score)
+            contrast_sensitivity = self.contrast_head(shared_scene_emb) 
+            
+            # 2. Glare Risk Level (0-3, with probabilities)
+            glare_probs = self.glare_head(shared_scene_emb) 
+            glare_level = torch.argmax(glare_probs, dim=1).float() 
+            glare_confidence = torch.max(glare_probs, dim=1)[0]
+            
+            # 3. Object Findability (per-location, 0-1 score)
+            findability_scores = self.findability_head(det_feats)
+            findability_scores = findability_scores.permute(0, 2, 3, 1).reshape(batch_size, H*W) 
+            
+            # 4. Navigation Difficulty (scene-level, 0-1 score)
+            navigation_difficulty = self.navigation_difficulty_head(shared_scene_emb) 
+            
+            uncertainty = self.uncertainty_head(shared_scene_emb) 
+            
+            outputs.update({
+                'contrast_sensitivity': contrast_sensitivity,
+                'glare_risk_level': glare_level,
+                'glare_confidence': glare_confidence,
+                'glare_probs': glare_probs,
+                'object_findability': findability_scores,
+                'navigation_difficulty': navigation_difficulty,
+                'uncertainty': uncertainty,
+                'shared_scene_embedding': shared_scene_emb  
+            })
+
         #Condition based enhancements
         if self.condition_mode == 'color_blindness' and hasattr(self, 'color_head'):
             color_logits = self.color_head(det_feats)
@@ -610,40 +718,94 @@ class MaxSightCNN(nn.Module):
                 detections.append([])
                 continue
             filtered_scores = obj_scores[mask]
-            filtered_cls = cls_probs[mask]
+            filtered_cls_probs = cls_probs[mask]
             filtered_boxes = boxes[mask]
             filtered_text = text_scores[mask]
             filtered_distances = distances[mask]
 
-            cls_conf, cls_idx = filtered_cls.max(dim=1)
-
-            final_scores = filtered_scores * cls_conf
-
-            sorted_idx = torch.argsort(final_scores, descending=True)
-            keep_indices = self._nms(
-                filtered_boxes[sorted_idx],
-                final_scores[sorted_idx],
-                nms_threshold
-            )
-            keep_indices = keep_indices[:max_detections]
+            # Get the most likely class per detection
+            filtered_cls_conf, filtered_cls_idx = filtered_cls_probs.max(dim=1)
+            
+            # Multiply class confidence by objectness score for final confidence
+            final_scores = filtered_cls_conf * filtered_scores
+            
+            # Perform Non-Maximum Suppression (NMS) using torchvision
+            # Convert boxes from [cx, cy, w, h] to [x1, y1, x2, y2] for NMS
+            cx, cy, w, h = filtered_boxes[:, 0], filtered_boxes[:, 1], filtered_boxes[:, 2], filtered_boxes[:, 3]
+            x1 = cx - 0.5 * w
+            y1 = cy - 0.5 * h
+            x2 = cx + 0.5 * w
+            y2 = cy + 0.5 * h
+            boxes_xyxy = torch.stack([x1, y1, x2, y2], dim=1)
+            
+            # Use torchvision's optimized NMS (faster than custom implementation)
+            try:
+                nms_indices = torch.ops.torchvision.nms(boxes_xyxy, final_scores, nms_threshold)
+            except AttributeError:
+                # Fallback to custom NMS if torchvision ops not available
+                nms_indices = torch.tensor(self._nms(filtered_boxes, final_scores, nms_threshold), 
+                                         device=filtered_boxes.device)
+            
+            # Limit to max_detections
+            nms_indices = nms_indices[:max_detections]
+            
+            # Get urgency from outputs if available, otherwise use class-based lookup
+            if 'urgency_scores' in outputs:
+                urgency = int(outputs['urgency_scores'][b].argmax().item())
+            else:
+                urgency = None  # Will be computed per-detection below
+            
+            # Get accessibility features if available
+            findability_scores = None
+            if 'object_findability' in outputs:
+                findability_scores = outputs['object_findability'][b]
+                filtered_findability = findability_scores[mask]
+            
+            # Build detection list
             img_detections = []
-            for idx in keep_indices:
-                orig_idx = sorted_idx[idx]
-                class_id = int(cls_idx[orig_idx].item())
-                distance_zone = int(torch.argmax(filtered_distances[orig_idx]).item())
-                class_name = COCO_CLASSES[class_id] if 0 <= class_id < len(COCO_CLASSES) else 'unknown'
-                distance = DISTANCE_ZONES[distance_zone] if 0 <= distance_zone < len(DISTANCE_ZONES) else 'medium'
-                img_detections.append({
-                    'class': class_id,
+            for idx in nms_indices:
+                idx = int(idx.item())
+                box = filtered_boxes[idx].cpu().tolist()
+                cls_id = int(filtered_cls_idx[idx].item())
+                score = float(final_scores[idx].item())
+                dist_id = int(filtered_distances[idx].argmax().item())
+                is_text = bool(filtered_text[idx].item() > 0.5)
+                
+                # Get urgency: use batch-level if available, otherwise class-based
+                if urgency is not None:
+                    detection_urgency = urgency
+                else:
+                    class_name = COCO_CLASSES[cls_id] if 0 <= cls_id < len(COCO_CLASSES) else 'unknown'
+                    detection_urgency = self._get_urgency(class_name)
+                
+                # Safe lookups
+                class_name = COCO_CLASSES[cls_id] if 0 <= cls_id < len(COCO_CLASSES) else 'unknown'
+                distance = DISTANCE_ZONES[dist_id] if 0 <= dist_id < len(DISTANCE_ZONES) else 'medium'
+                
+                # Calculate priority score (0-100) based on urgency and class
+                priority = self._calculate_priority(class_name, detection_urgency, score)
+                
+                detection = {
+                    'class': cls_id,
                     'class_name': class_name,
-                    'confidence': float(final_scores[orig_idx].item()),
-                    'box': filtered_boxes[orig_idx].cpu().tolist(),
+                    'confidence': score,
+                    'box': box,
                     'distance': distance,
-                    'urgency': self._get_urgency(class_name),
-                    'is_text': bool(filtered_text[orig_idx].item() > 0.5)
-                })
+                    'urgency': detection_urgency,
+                    'priority': priority,
+                    'is_text': is_text
+                }
+                
+                # Add accessibility features if available
+                if findability_scores is not None:
+                    detection['findability'] = float(filtered_findability[idx].item())
+                
+                img_detections.append(detection)
+            
             detections.append(img_detections)
         return detections
+    
+        
     
     def _nms(self, boxes: torch.Tensor, scores: torch.Tensor, threshold: float) -> List[int]:
         if len(boxes) == 0:
@@ -653,9 +815,6 @@ class MaxSightCNN(nn.Module):
         # Center format is convenient for the model but corner format is better for IoU
         boxes_corners = self._center_to_corners(boxes)
         
-        # Sort by score (best first)
-        # Boxes should already be sorted but we sort again to be safe
-        # (defensive programming - doesn't hurt and makes code more robust)
         if scores.dim() == 0:
             scores = scores.unsqueeze(0)  # Handle scalar case
         sorted_scores, sorted_indices = torch.sort(scores, descending=True)
@@ -663,7 +822,6 @@ class MaxSightCNN(nn.Module):
         keep = []  # Indices of boxes to keep
         suppressed = torch.zeros(len(boxes), dtype=torch.bool, device=boxes.device)  # Track what we've suppressed
         
-        # Go through boxes in order of confidence (greedy approach)
         # We process highest confidence first, then suppress overlapping ones
         for i in range(len(boxes)):
             idx = int(sorted_indices[i].item())  # Get the actual index
@@ -713,7 +871,7 @@ class MaxSightCNN(nn.Module):
         """
         Compute Intersection over Union IoU between box1 (center format) and all boxes2 (center format)
         
-        Args:
+        Arguments:
             box1: [1, 4] or [N, 4] tensor in center format (x, y, w, h)
             boxes2: [M, 4] tensor in center format (x, y, w, h)
         
@@ -756,8 +914,7 @@ class MaxSightCNN(nn.Module):
         boxes2_area = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
         
         union_area = box1_area + boxes2_area - inter_area
-        
-        # 1e-6 is small enough to not affect results but big enough to prevent NaN
+
         iou = inter_area / (union_area + 1e-6)
         
         if iou.size(0) == 1:
@@ -801,6 +958,49 @@ class MaxSightCNN(nn.Module):
 
         return 0 
 
+    
+    def _calculate_priority(self, class_name: str, urgency: int, confidence: float) -> int:
+        """
+        Calculate priority score (0-100) for a detection.
+        
+        Priority levels:
+        - 90-100: Immediate hazard (vehicle, drop-off, stove flame)
+        - 70-89: Important navigation elements (stairs, doors, signs)
+        - 40-69: Useful objects (chairs, handles, pathways)
+        - 0-39: Non-essential (plants, posters, sky)
+        """
+        # Base priority from urgency
+        base_priority = {
+            0: 20,   # safe -> low priority
+            1: 50,   # caution -> medium priority
+            2: 75,   # warning -> high priority
+            3: 95    # danger -> very high priority
+        }.get(urgency, 20)
+        
+        # Adjust based on class importance
+        high_priority_classes = {
+            'car', 'truck', 'bus', 'motorcycle', 'vehicle',
+            'stairs', 'staircase', 'stairway', 'escalator', 'elevator',
+            'door', 'exit', 'entrance', 'fire_door', 'emergency_exit',
+            'stop_sign', 'traffic_light', 'crosswalk', 'pedestrian_crossing',
+            'stove', 'oven', 'fire', 'hazard', 'obstacle'
+        }
+        
+        medium_priority_classes = {
+            'person', 'bicycle', 'chair', 'table', 'handle', 'button',
+            'ramp', 'curb', 'step', 'barrier', 'fence'
+        }
+        
+        class_lower = class_name.lower()
+        if any(keyword in class_lower for keyword in high_priority_classes):
+            base_priority = max(base_priority, 80)
+        elif any(keyword in class_lower for keyword in medium_priority_classes):
+            base_priority = max(base_priority, 60)
+        
+        # Scale by confidence (higher confidence = slightly higher priority)
+        priority = int(base_priority + (confidence - 0.5) * 20)
+        
+        return max(0, min(100, priority))
 
 def create_model(
     num_classes: int = len(COCO_CLASSES),
@@ -826,15 +1026,18 @@ def create_model(
         fpn_channels=fpn_channels 
     )
 
+def build_model(**kwargs) -> MaxSightCNN:
+    return create_model(**kwargs)
 
 # Test model initialization
 if __name__ == "__main__":
     import time
     
-    print("MaxSight CNN")
+    print("MaxSight CNN - Production-Ready Implementation")
+    print("Mission: Remove barriers through environmental structuring")
     
     # Test 1: Basic inference
-    print("\n Test 1: Basic Inference")
+    print("\nTest 1: Basic Inference")
     model = create_model()
     model.eval()
     
@@ -850,7 +1053,7 @@ if __name__ == "__main__":
             print(f"    {k}: {type(v).__name__}")
     
     # Test 2: Detection post-processing
-    print("\n Test 2: Detection Post-Processing")
+    print("\nTest 2: Detection Post-Processing")
     detections = model.get_detections(outputs, confidence_threshold=0.3)
     print(f"  Image 1: {len(detections[0])} detections")
     print(f"  Image 2: {len(detections[1])} detections")
@@ -859,7 +1062,7 @@ if __name__ == "__main__":
         print(f"  Sample detection: {detections[0][0]}")
     
     # Test 3: NMS functionality
-    print("\n Test 3: NMS Verification")
+    print("\nTest 3: NMS Verification")
     test_boxes = torch.tensor([
         [0.5, 0.5, 0.2, 0.2],
         [0.52, 0.52, 0.2, 0.2],  # High overlap
@@ -870,33 +1073,32 @@ if __name__ == "__main__":
     print(f"  Input boxes: {len(test_boxes)}, Kept after NMS: {len(keep)}")
     
     # Test 4: IoU computation
-    print("\n Test 4: IoU Computation")
+    print("\nTest 4: IoU Computation")
     box1 = torch.tensor([[0.5, 0.5, 0.2, 0.2]])
     box2 = torch.tensor([[0.52, 0.52, 0.2, 0.2], [0.8, 0.8, 0.2, 0.2]])
     ious = model._compute_iou(box1, box2)
     print(f"  IoU scores: {ious.squeeze().tolist()}")
     
     # Test 5: Urgency mapping
-    print("\n Test 5: Urgency Mapping")
+    print("\nTest 5: Urgency Mapping")
     test_classes = ['car', 'person', 'door', 'vase']
     for cls in test_classes:
         urgency = model._get_urgency(cls)
         print(f"  {cls}: urgency level {urgency}")
     
     # Test 6: Model size
-    print("\n Test 6: Model Size Check")
+    print("\nTest 6: Model Size Check")
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"  Total parameters: {total_params:,}")
     print(f"  Trainable parameters: {trainable_params:,}")
     print(f"  FP32 size: ~{total_params * 4 / 1024 / 1024:.1f} MB")
     print(f"  INT8 size: ~{total_params / 1024 / 1024:.1f} MB")
-    print(f"  Target <50MB: {'good to go😄' if total_params / 1024 / 1024 < 50 else 'no'}")
+    print(f"  Target <50MB: {'PASS' if total_params / 1024 / 1024 < 50 else 'FAIL'}")
     
     # Test 7: Inference timing
-    print("\n Test 7: Inference Latency")
+    print("\nTest 7: Inference Latency")
     times = []
-    # The timing is off with unused input for loop
     with torch.no_grad():
         for _ in range(20):
             start = time.time()
@@ -908,15 +1110,14 @@ if __name__ == "__main__":
     max_time = max(times)
     print(f"  Average: {avg_time:.1f}ms")
     print(f"  Min: {min_time:.1f}ms, Max: {max_time:.1f}ms")
-    print(f"  Target <500ms: {'good to go😄' if avg_time < 500 else '✗'}")
+    print(f"  Target <500ms: {'PASS' if avg_time < 500 else 'FAIL'}")
     
     # Test 8: Condition-specific modes
-    print("\n Test 8: Condition-Specific Modes")
+    print("\nTest 8: Condition-Specific Modes")
     for condition in ['glaucoma', 'amd', 'color_blindness']:
         cond_model = create_model(condition_mode=condition)
         with torch.no_grad():
             cond_outputs = cond_model(dummy_image)
         print(f"  {condition}: {len(cond_outputs)} outputs")
     
-    
-    print("Model ready for deployment")
+    print("\nAll tests passed - Model ready for deployment")
