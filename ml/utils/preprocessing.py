@@ -518,17 +518,18 @@ class ImagePreprocessor:
         # Complexity: O(H*W) - processes all pixels once
         img_array = np.array(image).astype(np.float32)
         if len(img_array.shape) == 3:
-            gray_image = np.mean(img_array, axis=2)  # Average RGB channels to get grayscale
+            # np.mean with axis returns 2D array, ensure it's float64
+            gray_image = np.mean(img_array, axis=2, dtype=np.float64)  # Average RGB channels to get grayscale
         else:
-            gray_image = img_array  # Already grayscale
+            gray_image = img_array.astype(np.float64)  # Already grayscale, ensure float64
         
         # Calculate mean brightness - average of all pixel values
         # Complexity: O(H*W) - sums all pixels, then divides
-        mean_brightness = np.mean(gray_image)
+        mean_brightness: float = float(np.mean(gray_image))
         
         # Calculate standard deviation - measures brightness variation across image
         # Complexity: O(H*W) - computes variance then square root
-        std_brightness = np.std(gray_image)
+        std_brightness: float = float(np.std(gray_image))
         
         # Classification based on brightness thresholds
         # Thresholds chosen based on typical image brightness distributions:

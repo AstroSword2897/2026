@@ -84,8 +84,8 @@ class ContrastHead(nn.Module):
         # Registered buffers are tensors, but type checker needs explicit cast
         if not hasattr(self, 'sobel_x') or not hasattr(self, 'sobel_y'):
             return torch.zeros_like(features[:, :1])
-        sobel_x: torch.Tensor = self.sobel_x.to(dtype=gray.dtype)
-        sobel_y: torch.Tensor = self.sobel_y.to(dtype=gray.dtype)
+        sobel_x: torch.Tensor = self.sobel_x.to(dtype=gray.dtype)  # type: ignore
+        sobel_y: torch.Tensor = self.sobel_y.to(dtype=gray.dtype)  # type: ignore
         edge_x = F.conv2d(gray, sobel_x, padding=1)
         edge_y = F.conv2d(gray, sobel_y, padding=1)
         

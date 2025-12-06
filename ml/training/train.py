@@ -207,7 +207,7 @@ class Trainer:
             
             # Use AMP if available (speeds up on GPU, saves memory)
             device_str = str(self.device)
-            with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',
+            with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',  # type: ignore
               enabled=self.use_mixed_precision):
                 outputs = self.model(images)
                 loss_dict = self.criterion(outputs, targets)
@@ -303,7 +303,7 @@ class Trainer:
                     raise ValueError("Criterion (loss function) must be provided to Trainer")
                 if self.use_mixed_precision:
                     device_str = str(self.device)
-                    with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',
+                    with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',  # type: ignore
                                 enabled=self.use_mixed_precision):
                         outputs = self.model(images)
                         loss_dict = self.criterion(outputs, targets)

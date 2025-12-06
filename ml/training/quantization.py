@@ -36,7 +36,9 @@ def fuse_maxsight_modules(model: nn.Module) -> nn.Module:
     
     # Helper to check if a Sequential has Conv+BN+ReLU pattern
     def is_fusable_conv_bn_relu(seq: nn.Sequential, start_idx: int = 0) -> bool:
-        if len(seq) < start_idx + 3:
+        # nn.Sequential supports len() but type checker doesn't always recognize it
+        seq_len = len(seq)  # type: ignore[arg-type]
+        if seq_len < start_idx + 3:
             return False
         return (isinstance(seq[start_idx], nn.Conv2d) and
                 isinstance(seq[start_idx + 1], nn.BatchNorm2d) and
