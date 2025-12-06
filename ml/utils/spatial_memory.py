@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from threading import Lock
 import numpy as np
 try:
-    from scipy.spatial import KDTree
+    from scipy.spatial import KDTree  # type: ignore
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False

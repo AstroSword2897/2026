@@ -169,7 +169,7 @@ class OCRIntegration:
         
         if use_dbscan:
             try:
-                from sklearn.cluster import DBSCAN
+                from sklearn.cluster import DBSCAN  # type: ignore
             except ImportError:
                 raise RuntimeError(
                     "scikit-learn required for text region clustering. "
