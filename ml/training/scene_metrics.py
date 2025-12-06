@@ -146,7 +146,7 @@ class SceneMetrics:
         if len(self.inference_times) == 0:
             return {}
         
-        times = np.array(self.inference_times)
+        times: np.ndarray = np.array(self.inference_times, dtype=np.float64)
         return {
             'mean_latency_ms': float(np.mean(times)),
             'median_latency_ms': float(np.median(times)),

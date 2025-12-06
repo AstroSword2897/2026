@@ -235,6 +235,7 @@ class DetectionMetrics:
                          for thresh in thresholds}
 
         result = {
+            # Convert dict values to list for proper type inference
             'mAP': float(np.mean(list(per_threshold.values()))) if per_threshold else 0.0,
             'per_threshold': per_threshold,
             'per_class': [self.compute_ap_vectorized(c, float(thresholds[0])) for c in range(self.num_classes)]
@@ -285,7 +286,7 @@ class DetectionMetrics:
     def get_latency_stats(self) -> Dict[str, float]:
         if not self.inference_times:
             return {k: 0.0 for k in ['mean_ms','median_ms','min_ms','max_ms','std_ms','p95_ms','p99_ms']}
-        times = np.array(self.inference_times)
+        times: np.ndarray = np.array(self.inference_times, dtype=np.float64)
         return {
             'mean_ms': float(np.mean(times)),
             'median_ms': float(np.median(times)),

@@ -263,7 +263,7 @@ class ProductionTrainLoop:
             # Forward pass with mixed precision
             if self.use_mixed_precision and self.scaler is not None:
                 device_type = 'cuda' if self.device.startswith('cuda') else 'mps' if self.device == 'mps' else 'cpu'
-                with autocast(device_type=device_type):
+                with autocast(device_type=device_type):  # type: ignore
                     outputs = self.model(images)
                     loss = self.compute_multihead_loss(outputs, targets)
                 
@@ -312,7 +312,7 @@ class ProductionTrainLoop:
                 # Forward pass
                 if self.use_mixed_precision and self.scalar is not None:
                     device_type = "cuda" if self.device.startswith("cuda") else "mps" if self.device == "mps" else "cpu"
-                    with autocast(device_type=device_type):
+                    with autocast(device_type=device_type):  # type: ignore
                         outputs = self.model(images)
                         loss = self.compute_multihead_loss(outputs, targets)
                 # Backward pass with scaling

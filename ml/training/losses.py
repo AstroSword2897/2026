@@ -25,7 +25,8 @@ class FocalLoss(nn.Module):
         ce_loss = F.cross_entropy(logits, targets, reduction='none')
         pt = torch.exp(-ce_loss)
         
-        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+        # Use torch.tensor(1.0) instead of literal 1 for proper type inference
+        focal_loss = self.alpha * (torch.tensor(1.0, device=pt.device, dtype=pt.dtype) - pt) ** self.gamma * ce_loss
         
         if self.reduction == 'mean':
             return focal_loss.mean()
@@ -52,11 +53,13 @@ class IoULoss(nn.Module):
         iou = self._compute_iou(pred_boxes, target_boxes)
         
         if self.loss_type == 'iou':
-            loss = 1 - iou
+            loss = torch.tensor(1.0, device=iou.device, dtype=iou.dtype) - iou
         elif self.loss_type == 'giou':
-            loss = 1 - self._compute_giou(pred_boxes, target_boxes, iou)
+            giou = self._compute_giou(pred_boxes, target_boxes, iou)
+            loss = torch.tensor(1.0, device=giou.device, dtype=giou.dtype) - giou
         elif self.loss_type in ['diou', 'ciou']:
-            loss = 1 - self._compute_diou_ciou(pred_boxes, target_boxes, iou)
+            diou_ciou = self._compute_diou_ciou(pred_boxes, target_boxes, iou)
+            loss = torch.tensor(1.0, device=diou_ciou.device, dtype=diou_ciou.dtype) - diou_ciou
         
         if self.reduction == 'mean':
             return loss.mean()
