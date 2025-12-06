@@ -103,8 +103,6 @@ class ProductionTrainLoop:
         self.val_loader = val_loader
         self.loss_fn = loss_fn
         self.device = device
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
         self.num_epochs = num_epochs
         self.gradient_clip_norm = gradient_clip_norm
         self.log_interval = log_interval
@@ -179,13 +177,13 @@ class ProductionTrainLoop:
         """Freeze ResNet backbone parameters."""
         for param in self.backbone_params:
             param.requires_grad = False
-        print("✓ Backbone frozen (only heads will be trained)")
+        print(" Backbone frozen (only heads will be trained)")
     
     def _unfreeze_backbone(self):
         """Unfreeze ResNet backbone parameters."""
         for param in self.backbone_params:
             param.requires_grad = True
-        print("✓ Backbone unfrozen (full model training)")
+        print(" Backbone unfrozen (full model training)")
     
     def compute_multihead_loss(
         self,
@@ -263,8 +261,9 @@ class ProductionTrainLoop:
             self.optimizer.zero_grad()
             
             # Forward pass with mixed precision
-            if self.use_mixed_precision:
-                with autocast():
+            if self.use_mixed_precision and self.scaler is not None:
+                device_type = 'cuda' if self.device.startswith('cuda') else 'mps' if self.device == 'mps' else 'cpu'
+                with autocast(device_type=device_type):
                     outputs = self.model(images)
                     loss = self.compute_multihead_loss(outputs, targets)
                 
@@ -311,16 +310,31 @@ class ProductionTrainLoop:
                 targets = move_targets_to_device(targets, self.device)
                 
                 # Forward pass
-                if self.use_mixed_precision:
-                    with autocast():
+                if self.use_mixed_precision and self.scalar is not None:
+                    device_type = "cuda" if self.device.startswith("cuda") else "mps" if self.device == "mps" else "cpu"
+                    with autocast(device_type=device_type):
                         outputs = self.model(images)
                         loss = self.compute_multihead_loss(outputs, targets)
+                # Backward pass with scaling
+                    self.scaler.scale(loss).backward()
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        [p for p in self.model.parameters() if p.requires_grad], 
+                        self.gradient_clip_norm
+                    )
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
                 else:
                     outputs = self.model(images)
                     loss = self.compute_multihead_loss(outputs, targets)
-                
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(
+                        [p for p in self.model.parameters() if p.requires_grad], 
+                        self.gradient_clip_norm
+                    )
+                    self.optimizer.step()
                 total_loss += loss.item()
-                num_batches += 1
+                num_batches += 1 
         
         avg_loss = total_loss / num_batches if num_batches > 0 else float('inf')
         return avg_loss
@@ -364,22 +378,18 @@ class ProductionTrainLoop:
         Returns:
             Dictionary with training history and best model path
         """
-        print("=" * 70)
         print("Starting Production Training Loop")
-        print("=" * 70)
         print(f"Device: {self.device}")
         print(f"Mixed Precision: {self.use_mixed_precision}")
         print(f"Epochs: {self.num_epochs}")
         print(f"Train batches: {len(self.train_loader)}")
         if self.val_loader:
             print(f"Val batches: {len(self.val_loader)}")
-        print("=" * 70)
         
         start_time = time.time()
         
         for epoch in range(1, self.num_epochs + 1):
             print(f"\nEpoch {epoch}/{self.num_epochs}")
-            print("-" * 70)
             
             # Unfreeze backbone after freeze_backbone_epochs
             if self.freeze_backbone_epochs > 0 and epoch == self.freeze_backbone_epochs + 1:
@@ -421,14 +431,6 @@ class ProductionTrainLoop:
         history_path = self.checkpoint_dir / 'training_history.json'
         with open(history_path, 'w') as f:
             json.dump(self.history, f, indent=2)
-        
-        print("\n" + "=" * 70)
-        print("Training Complete!")
-        print("=" * 70)
-        print(f"Best validation loss: {self.best_val_loss:.4f}")
-        print(f"Total time: {elapsed_time/3600:.2f} hours")
-        print(f"Checkpoints saved to: {self.checkpoint_dir}")
-        print("=" * 70)
         
         return {
             'best_val_loss': self.best_val_loss,

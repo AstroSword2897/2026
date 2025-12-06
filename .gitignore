@@ -21,7 +21,6 @@ build/
 *.pt
 *.pte
 checkpoints/
-models/
 
 # Datasets
 datasets/*/
