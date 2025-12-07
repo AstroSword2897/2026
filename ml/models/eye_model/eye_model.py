@@ -106,7 +106,9 @@ class EyeImagePreprocessor:
         Returns:
             Preprocessed tensor [3, 64, 64] in [0,1] range
         """
-        return self.transform(image)
+        result = self.transform(image)
+        assert isinstance(result, torch.Tensor), "Transform must return Tensor"
+        return result
     
     def preprocess_tensor(
         self,

@@ -268,16 +268,21 @@ class ProductionTrainLoop:
                     loss = self.compute_multihead_loss(outputs, targets)
                 
                 # Backward pass with scaling
-                self.scaler.scale(loss).backward()
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                if self.scaler is not None:
+                    self.scaler.scale(loss).backward()
+                    self.scaler.unscale_(self.optimizer)  # type: ignore[call-arg]
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)  # type: ignore[call-arg]
+                    self.scaler.step(self.optimizer)  # type: ignore[call-arg]
+                    self.scaler.update()  # type: ignore[call-arg]
+                else:
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)  # type: ignore[call-arg]
+                    self.optimizer.step()
             else:
                 outputs = self.model(images)
                 loss = self.compute_multihead_loss(outputs, targets)
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_norm)  # type: ignore[call-arg]
                 self.optimizer.step()
             
             total_loss += loss.item()
@@ -316,14 +321,22 @@ class ProductionTrainLoop:
                         outputs = self.model(images)
                         loss = self.compute_multihead_loss(outputs, targets)
                 # Backward pass with scaling
-                    self.scaler.scale(loss).backward()
-                    self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        [p for p in self.model.parameters() if p.requires_grad], 
-                        self.gradient_clip_norm
-                    )
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
+                    if self.scaler is not None:
+                        self.scaler.scale(loss).backward()
+                        self.scaler.unscale_(self.optimizer)  # type: ignore[call-arg]
+                        torch.nn.utils.clip_grad_norm_(
+                            [p for p in self.model.parameters() if p.requires_grad], 
+                            self.gradient_clip_norm
+                        )  # type: ignore[call-arg]
+                        self.scaler.step(self.optimizer)  # type: ignore[call-arg]
+                        self.scaler.update()  # type: ignore[call-arg]
+                    else:
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(
+                            [p for p in self.model.parameters() if p.requires_grad], 
+                            self.gradient_clip_norm
+                        )  # type: ignore[call-arg]
+                        self.optimizer.step()
                 else:
                     outputs = self.model(images)
                     loss = self.compute_multihead_loss(outputs, targets)
@@ -331,7 +344,7 @@ class ProductionTrainLoop:
                     torch.nn.utils.clip_grad_norm_(
                         [p for p in self.model.parameters() if p.requires_grad], 
                         self.gradient_clip_norm
-                    )
+                    )  # type: ignore[call-arg]
                     self.optimizer.step()
                 total_loss += loss.item()
                 num_batches += 1 

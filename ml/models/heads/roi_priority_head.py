@@ -214,7 +214,8 @@ class ROIPriorityHead(nn.Module):
         # Should have score_i > score_j when rank_i > rank_j
         # sign(rank_diff) = +1 if rank_i > rank_j, -1 if rank_i < rank_j
         # We want score_diff * sign(rank_diff) > margin
-        loss = F.relu(margin - score_diff * torch.sign(rank_diff))
+        margin_tensor = torch.tensor(margin, device=score_diff.device, dtype=score_diff.dtype)
+        loss = F.relu(margin_tensor - score_diff * torch.sign(rank_diff))
         
         # Only consider valid pairs (where rankings differ)
         valid_pairs = (rank_diff != 0).float()

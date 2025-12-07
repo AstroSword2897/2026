@@ -431,7 +431,7 @@ class ModelBenchmark:
                 for x in test_inputs:
                     _ = model(x)
                 t1 = time.perf_counter()
-                timings.append((t1 - t0) / len(test_inputs) * 1000)  # ms per input
+                timings.append((t1 - t0) / len(test_inputs) * 1000)  # type: ignore[operator] # ms per input
         
         timings = np.array(timings)
         

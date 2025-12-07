@@ -249,7 +249,8 @@ class ContrastHead(nn.Module):
             
             # Avoid division by zero with efficient masking
             range_mask = (edge_max > edge_min).float()
-            edge_map = range_mask * (edge_map - edge_min) / (edge_max - edge_min + 1e-8) + (1 - range_mask) * torch.zeros_like(edge_map)
+            one_tensor = torch.tensor(1.0, device=range_mask.device, dtype=range_mask.dtype)
+            edge_map = range_mask * (edge_map - edge_min) / (edge_max - edge_min + 1e-8) + (one_tensor - range_mask) * torch.zeros_like(edge_map)
         else:
                 # Fallback for unexpected shapes (shouldn't happen, but safe)
             edge_max_val = edge_map.max()

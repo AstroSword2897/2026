@@ -293,7 +293,7 @@ class ProductionTrainer:
                 param_group['lr'] = base_lr * warmup_factor
         else:
             # Cosine annealing phase
-            self.scheduler.step()
+            self.scheduler.step()  # type: ignore[call-arg]
         
         # Track learning rates
         current_lrs = [pg['lr'] for pg in self.optimizer.param_groups]
@@ -376,14 +376,14 @@ class ProductionTrainer:
                     loss = loss_dict['total_loss']  # Total combined loss
                 
                 self.scaler.scale(loss).backward()  # Scale loss for FP16 backward pass
-                self.scaler.step(self.optimizer)  # Update weights with scaled gradients
-                self.scaler.update()  # Update scaler for next iteration
+                self.scaler.step(self.optimizer)  # type: ignore[call-arg] # Update weights with scaled gradients
+                self.scaler.update()  # type: ignore[call-arg] # Update scaler for next iteration
             else:
                 outputs = self.model(images)  # FP32 forward pass
                 loss_dict = self.criterion(outputs, targets)  # Compute loss
                 loss = loss_dict['total_loss']
                 loss.backward()  # Backward pass (compute gradients)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)  # Gradient clipping prevents exploding gradients
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)  # type: ignore[call-arg] # Gradient clipping prevents exploding gradients
                 self.optimizer.step()  # Update weights
             
             total_loss += loss.item()  # Accumulate loss (detach from graph)
@@ -782,7 +782,7 @@ class ProductionTrainer:
                     print(f"   Best val_loss: {self.best_val_loss:.4f}")
                     break  # Stop training early
             
-            self.scheduler.step()  # Update learning rate (cosine annealing)
+            self.scheduler.step()  # type: ignore[call-arg] # Update learning rate (cosine annealing)
             
             # Periodic checkpoints every 5 epochs (allows resuming training)
             if epoch % 5 == 0:

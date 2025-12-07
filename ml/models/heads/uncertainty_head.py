@@ -14,10 +14,10 @@ class UncertaintyHead(nn.Module):
         self.fc1 = nn.Linear(scene_dim, hidden_dim)
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
-        self.norm2 = nn.LayerNorm(hidden_dim // 2, 1)
+        self.norm2 = nn.LayerNorm(hidden_dim // 2)
         self.fc3 = nn.Linear(hidden_dim // 2, 1)
         self.relu = nn.ReLU(inplace=True)
-        self.dropout - nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, scene_embedding: torch.Tensor) -> Dict[str, torch.Tensor]:

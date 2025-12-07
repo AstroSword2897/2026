@@ -207,8 +207,7 @@ class Trainer:
             
             # Use AMP if available (speeds up on GPU, saves memory)
             device_str = str(self.device)
-            with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',  # type: ignore
-              enabled=self.use_mixed_precision):
+            with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu'):  # type: ignore
                 outputs = self.model(images)
                 loss_dict = self.criterion(outputs, targets)
                 loss = loss_dict['total_loss'] / self.gradient_accumulation_steps
@@ -220,13 +219,13 @@ class Trainer:
             
             # Gradient accumulation for the final batch
             if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
-                if self.scaler:
-                    self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                if self.scaler is not None:
+                    self.scaler.unscale_(self.optimizer)  # type: ignore[call-arg]
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)  # type: ignore[call-arg]
 
-                if self.scaler:
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
+                if self.scaler is not None:
+                    self.scaler.step(self.optimizer)  # type: ignore[call-arg]
+                    self.scaler.update()  # type: ignore[call-arg]
                 else:
                     self.optimizer.step()
 
@@ -235,7 +234,7 @@ class Trainer:
                 
                 # Update EMA after optimizer step
                 if self.ema is not None:
-                    self.ema.update()
+                    self.ema.update()  # type: ignore[call-arg]
             
             total_loss += loss_dict['total_loss'].item()
             total_samples += images.size(0)
@@ -253,11 +252,11 @@ class Trainer:
         if (batch_idx + 1) % self.gradient_accumulation_steps != 0:
             if self.scaler:
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)  # type: ignore[call-arg]
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)  # type: ignore[call-arg]
                 self.optimizer.step()
 
             self.optimizer.zero_grad()
@@ -303,8 +302,7 @@ class Trainer:
                     raise ValueError("Criterion (loss function) must be provided to Trainer")
                 if self.use_mixed_precision:
                     device_str = str(self.device)
-                    with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu',  # type: ignore
-                                enabled=self.use_mixed_precision):
+                    with autocast(device_type='cuda' if 'cuda' in device_str else 'cpu'):  # type: ignore
                         outputs = self.model(images)
                         loss_dict = self.criterion(outputs, targets)
 

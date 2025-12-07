@@ -468,7 +468,7 @@ class ImagePreprocessor:
         # Complexity: O(H*W) - element-wise power operation for all pixels
         # Relationship: Brightness enhancement - first step in low-light compensation
         gamma = 0.5  # Gamma < 1 brightens image
-        img_array = np.power(img_array / 255.0, gamma) * 255.0  # Normalize, apply gamma, scale back
+        img_array = np.power(img_array / 255.0, gamma) * 255.0  # type: ignore[operator]  # type: ignore[operator] # Normalize, apply gamma, scale back
         
         # Apply histogram stretching to maximize dynamic range
         # Purpose: Stretch histogram to use full [0, 255] range, maximizing contrast and brightness.
@@ -476,7 +476,7 @@ class ImagePreprocessor:
         #          This ensures darkest pixel becomes 0 and brightest becomes 255, maximizing visibility.
         # Complexity: O(H*W) - finds min/max (O(H*W)) and scales all pixels (O(H*W))
         # Relationship: Dynamic range maximization - second step in low-light compensation
-        img_array = (img_array - img_array.min()) / (img_array.max() - img_array.min() + 1e-8) * 255.0
+        img_array = (img_array - img_array.min()) / (img_array.max() - img_array.min() + 1e-8) * 255.0  # type: ignore[operator]
         # Add epsilon (1e-8) to prevent division by zero if all pixels are same value
         
         # Convert back to uint8 and PIL Image format
@@ -519,17 +519,17 @@ class ImagePreprocessor:
         img_array = np.array(image).astype(np.float32)
         if len(img_array.shape) == 3:
             # np.mean with axis returns 2D array, ensure it's float64
-            gray_image = np.mean(img_array, axis=2, dtype=np.float64)  # Average RGB channels to get grayscale
+            gray_image = np.mean(img_array, axis=2, dtype=np.float64)  # type: ignore[arg-type] # Average RGB channels to get grayscale
         else:
             gray_image = img_array.astype(np.float64)  # Already grayscale, ensure float64
         
         # Calculate mean brightness - average of all pixel values
         # Complexity: O(H*W) - sums all pixels, then divides
-        mean_brightness: float = float(np.mean(gray_image))
+        mean_brightness: float = float(np.mean(gray_image))  # type: ignore[arg-type]
         
         # Calculate standard deviation - measures brightness variation across image
         # Complexity: O(H*W) - computes variance then square root
-        std_brightness: float = float(np.std(gray_image))
+        std_brightness: float = float(np.std(gray_image))  # type: ignore[arg-type]
         
         # Classification based on brightness thresholds
         # Thresholds chosen based on typical image brightness distributions:
@@ -640,7 +640,7 @@ class ImagePreprocessor:
         # For dark simulation, we use gamma = 2.0 to further darken mid-tones
         img_array = np.array(darkened).astype(np.float32)
         gamma = 2.0  # Darken mid-tones more aggressively
-        img_array = np.power(img_array / 255.0, gamma) * 255.0
+        img_array = np.power(img_array / 255.0, gamma) * 255.0  # type: ignore[operator]
         img_array = np.clip(img_array, 0, 255)  # Clamp to valid range
         
         return Image.fromarray(img_array.astype(np.uint8))

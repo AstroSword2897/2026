@@ -189,7 +189,7 @@ class OCRIntegration:
             
             for label in unique_labels:
                 cluster_mask = labels == label
-                cluster_coords = coords[cluster_mask]
+                cluster_coords = coords[cluster_mask]  # type: ignore[index]
                 
                 if len(cluster_coords) > 0:
                     x_min = int(cluster_coords[:, 0].min())

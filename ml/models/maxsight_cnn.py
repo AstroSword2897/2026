@@ -220,7 +220,7 @@ class SimplifiedFPN(nn.Module):
         ])
 
     def forward(self, features: List[torch.Tensor]) -> List[torch.Tensor]:
-        laterals = [conv(feat) for conv, feat in zip(self.lateral_convs, features)]
+        laterals = [conv(feat) for conv, feat in zip(self.lateral_convs, features)]  # type: ignore[arg-type]
         
         fpn_features = []
         prev = None
@@ -662,7 +662,7 @@ class MaxSightCNN(nn.Module):
         if self.condition_mode in ['glaucoma', 'amd']:
             center_mask = self._get_center_mask(H,W,images.device)
             if self.condition_mode == 'glaucoma' and hasattr(self,'peripheral_weight'):
-                peripheral_mask = 1 - center_mask
+                peripheral_mask = torch.tensor(1.0, device=center_mask.device, dtype=center_mask.dtype) - center_mask
                 outputs['peripheral_priority'] = peripheral_mask * self.peripheral_weight
             if self.condition_mode == 'amd' and hasattr(self,'central_weight'):
                 outputs['central_priority'] = center_mask * self.central_weight

@@ -211,7 +211,7 @@ class DetectionMetrics:
         matched = np.array([p.matched_gt_idx is not None for p in preds], dtype=bool)
 
         sort_idx = np.argsort(-scores)
-        ious, matched = ious[sort_idx], matched[sort_idx]
+        ious, matched = ious[sort_idx], matched[sort_idx]  # type: ignore[index]
         tp = (ious >= iou_threshold) & matched
         fp = ~tp
         tp_cumsum, fp_cumsum = np.cumsum(tp, dtype=np.float32), np.cumsum(fp, dtype=np.float32)
@@ -220,13 +220,13 @@ class DetectionMetrics:
         if total_gt == 0:
             return 0.0
 
-        recall = tp_cumsum / total_gt
-        precision = tp_cumsum / np.maximum(tp_cumsum + fp_cumsum, 1e-9)
-        precision = np.maximum.accumulate(precision[::-1])[::-1]
+        recall = tp_cumsum / total_gt  # type: ignore[operator]
+        precision = tp_cumsum / np.maximum(tp_cumsum + fp_cumsum, 1e-9)  # type: ignore[operator]
+        precision = np.maximum.accumulate(precision[::-1])[::-1]  # type: ignore[index]
 
         recall_unique, unique_idx = np.unique(recall, return_index=True)
-        precision_unique = precision[unique_idx]
-        return float(np.trapz(precision_unique, recall_unique))
+        precision_unique = precision[unique_idx]  # type: ignore[index]
+        return float(np.trapz(precision_unique, recall_unique))  # type: ignore[arg-type]
 
     def compute_map_vectorized(self, iou_threshold: Optional[float] = None) -> Dict[str, float]:
         thresholds = [iou_threshold] if iou_threshold else self.iou_thresholds

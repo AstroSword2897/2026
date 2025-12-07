@@ -167,7 +167,7 @@ class IoULoss(nn.Module):
             2
         )
         
-        alpha = v / (1 - iou + v + 1e-8)
+        alpha = v / (torch.tensor(1.0, device=iou.device, dtype=iou.dtype) - iou + v + 1e-8)
         ciou = diou - alpha * v
         
         return ciou

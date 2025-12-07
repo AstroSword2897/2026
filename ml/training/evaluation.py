@@ -171,7 +171,7 @@ def plot_lighting_metrics(metrics: Dict[str, float], save_path: Optional[Path] =
     
     if save_path:
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(str(save_path), dpi=150, bbox_inches='tight')  # type: ignore[arg-type]
         print(f"Plot saved to {save_path}")
     
     plt.close()

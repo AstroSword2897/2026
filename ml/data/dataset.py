@@ -30,86 +30,86 @@ class MaxSightDataset(Dataset):
         self.max_objects = max_objects
         self.preprocessor = ImagePreprocessor(condition_mode=condition_mode)
 
-        self.anotations = self._load_annotations()
+        self.annotations = self._load_annotations()
 
-        self.image_ids = list(self.annotations.key()) if self.annotations else []
+        self.image_ids = list(self.annotations.keys()) if self.annotations else []
 
-        self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate (COCO_CLASSES)}
-        self.idx_to_class = {idx: cls_name for idx, cls_name in enumerate (COCO_CLASSES)}
+        self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(COCO_CLASSES)}
+        self.idx_to_class = {idx: cls_name for idx, cls_name in enumerate(COCO_CLASSES)}
 
-        def _load_annotations(self) -> Dict[str, Any]:
-            if not self.annotation_file or not self.annotation_file.exists():
-                return {}
-            with open(self.annotation_file, 'r') as f:
-                data = json.load(f)
-            annotations = {}
-            if 'images' in data and 'annotations' in data:
-                image_map = {img['id']: img for img in data['images']}
-                category_map = {cat['id']: cat['name'] for cat in data.get('categories', [])}
-                for ann in data['annotations']:
-                    image_id = ann['image_id']
-                    if image_id not in annotations:
-                        img_info = image_map.get(image_id, {})
-                        annotations[image_id] = {
-                            'image path': self.image_dir / img_info.get('file_name', f'{image_id}.jpg'),
-                            'objects': [],
-                            'urgency': 0,
-                            'lighting': 'normal',
-                            'audio_path': None
-                        }
-                        # Extract bounding box from COCO format [x, y, width, height] in pixels
-                        bbox = ann['bbox']
-                        img_info = image_map[image_id]
-                        img_width = img_info.get('width', 224)
-                        img_height = img_info.get('height', 224)
-                        
-                        # Convert to center format and normalize to [0, 1]
-                        cx = (bbox[0] + bbox[2] / 2) / img_width
-                        cy = (bbox[1] + bbox[3] / 2) / img_height
-                        w = bbox[2] / img_width
-                        h = bbox[3] / img_height
-                        
-                        category_name = category_map.get(ann['category_id'], 'unknown')
-                        class_idx = self.class_to_idx.get(category_name, 0)
-                        box_area = w * h
-                        if box_area > 0.1:
-                            distance_zone = 0  # Near
-                        elif box_area > 0.05:
-                            distance_zone = 1  # Medium
-                        else:
-                            distance_zone = 2  # Far
-                        
-                        # Estimate urgency from category (vehicles/hazards = high urgency)
-                        urgency_keywords = ['car', 'truck', 'bus', 'vehicle', 'fire', 'hazard', 'stop', 'traffic']
-                        urgency = 3 if any(kw in category_name.lower() for kw in urgency_keywords) else 0
-                        
-                        annotations[image_id]['objects'].append({
-                            'box': [cx, cy, w, h],
-                            'class': class_idx,
-                            'category': category_name,
-                            'distance': distance_zone,
-                            'urgency': urgency
-                        })
+    def _load_annotations(self) -> Dict[str, Any]:
+        if not self.annotation_file or not self.annotation_file.exists():
+            return {}
+        with open(self.annotation_file, 'r') as f:
+            data = json.load(f)
+        annotations = {}
+        if 'images' in data and 'annotations' in data:
+            image_map = {img['id']: img for img in data['images']}
+            category_map = {cat['id']: cat['name'] for cat in data.get('categories', [])}
+            for ann in data['annotations']:
+                image_id = ann['image_id']
+                if image_id not in annotations:
+                    img_info = image_map.get(image_id, {})
+                    annotations[image_id] = {
+                        'image path': self.image_dir / img_info.get('file_name', f'{image_id}.jpg'),
+                        'objects': [],
+                        'urgency': 0,
+                        'lighting': 'normal',
+                        'audio_path': None
+                    }
+                    # Extract bounding box from COCO format [x, y, width, height] in pixels
+                    bbox = ann['bbox']
+                    img_info = image_map[image_id]
+                    img_width = img_info.get('width', 224)
+                    img_height = img_info.get('height', 224)
+                    
+                    # Convert to center format and normalize to [0, 1]
+                    cx = (bbox[0] + bbox[2] / 2) / img_width
+                    cy = (bbox[1] + bbox[3] / 2) / img_height
+                    w = bbox[2] / img_width
+                    h = bbox[3] / img_height
+                    
+                    category_name = category_map.get(ann['category_id'], 'unknown')
+                    class_idx = self.class_to_idx.get(category_name, 0)
+                    box_area = w * h
+                    if box_area > 0.1:
+                        distance_zone = 0  # Near
+                    elif box_area > 0.05:
+                        distance_zone = 1  # Medium
+                    else:
+                        distance_zone = 2  # Far
+                    
+                    # Estimate urgency from category (vehicles/hazards = high urgency)
+                    urgency_keywords = ['car', 'truck', 'bus', 'vehicle', 'fire', 'hazard', 'stop', 'traffic']
+                    urgency = 3 if any(kw in category_name.lower() for kw in urgency_keywords) else 0
+                    
+                    annotations[image_id]['objects'].append({
+                        'box': [cx, cy, w, h],
+                        'class': class_idx,
+                        'category': category_name,
+                        'distance': distance_zone,
+                        'urgency': urgency
+                    })
 
-                        annotations[image_id]['urgency'] = max(annotations[image_id]['urgency'], urgency)
-                else:
-                    for ann in data:
-                        image_id = ann.get('image_id', ann.get('id', len(annotations)))
-                        annotations[image_id] = {
-                            'image_path': self.image_dir / ann.get('image_path', f'{image_id}.jpg'),
-                            'objects': ann.get('objects', []),
-                            'urgency': ann.get('urgency', 0),
-                            'lighting': ann.get('lighting', 'normal'),
-                            'audio_path': ann.get('audio_path')
-                        }
-                return annotations
+                    annotations[image_id]['urgency'] = max(annotations[image_id]['urgency'], urgency)
+        else:
+            for ann in data:
+                image_id = ann.get('image_id', ann.get('id', len(annotations)))
+                annotations[image_id] = {
+                    'image_path': self.image_dir / ann.get('image_path', f'{image_id}.jpg'),
+                    'objects': ann.get('objects', []),
+                    'urgency': ann.get('urgency', 0),
+                    'lighting': ann.get('lighting', 'normal'),
+                    'audio_path': ann.get('audio_path')
+                }
+        return annotations
             
     def __len__(self) -> int:
         """Return dataset size - O(1) complexity"""
         return len(self.image_ids)
     
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-       #Load sammple with index
+        # Load sample with index
         image_id = self.image_ids[idx]
         ann = self.annotations[image_id]
         
@@ -127,7 +127,7 @@ class MaxSightDataset(Dataset):
             except Exception:
                 image = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
         
-        if self.apply_lighting_augmentation:
+        if self.apply_lightning_augmentation:
             preprocessed = self.preprocessor.preprocess_with_lighting(image)
             image_tensor = preprocessed['image']
             lighting = preprocessed.get('lighting', ann.get('lighting', 'normal'))
