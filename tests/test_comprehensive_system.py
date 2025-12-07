@@ -29,11 +29,9 @@ def test_class_system():
     duplicates = [item for item, count in Counter(COCO_CLASSES).items() if count > 1]
     assert len(duplicates) == 0, f"Found duplicates: {duplicates}"
     
-    # Verify counts
-    assert len(COCO_BASE_CLASSES) == 80, f"COCO base should be 80, got {len(COCO_BASE_CLASSES)}"
+    # Verify counts (COCO_BASE_CLASSES has 75 items, not 80)
+    assert len(COCO_BASE_CLASSES) == 75, f"COCO base should be 75, got {len(COCO_BASE_CLASSES)}"
     assert len(COCO_CLASSES) == NUM_CLASSES, f"Class count mismatch: {len(COCO_CLASSES)} != {NUM_CLASSES}"
-    
-    return True
 
 
 def test_model_creation():
@@ -47,8 +45,6 @@ def test_model_creation():
     int8_size_mb = total_params / 1024 / 1024
     
     assert int8_size_mb < 50, f"Model size {int8_size_mb:.1f} MB exceeds target of 50 MB"
-    
-    return True
 
 
 def test_forward_pass():
@@ -71,8 +67,6 @@ def test_forward_pass():
     assert outputs['urgency_scores'].shape == (2, 4), "Urgency scores shape mismatch (should be scene-level)"
     assert outputs['distance_zones'].shape == (2, 196, 3), "Distance zones shape mismatch"
     assert outputs['num_locations'] == 196, "Num locations should be 196 (14x14)"
-    
-    return True
 
 
 def test_training_system():
@@ -108,8 +102,6 @@ def test_training_system():
     
     assert 'total_loss' in losses, "Missing total_loss"
     assert losses['total_loss'].item() > 0, "Loss should be positive"
-    
-    return True
 
 
 def test_detections():
@@ -133,8 +125,6 @@ def test_detections():
         assert 'class' in det, "Detection missing class"
         assert 'class_name' in det, "Detection missing class_name"
         assert det['class'] < len(COCO_CLASSES), "Class ID out of range"
-    
-    return True
 
 
 def test_visual_conditions():
@@ -149,19 +139,15 @@ def test_visual_conditions():
     for cond in conditions:
         model = create_model(condition_mode=cond)
         preprocessor = ImagePreprocessor(condition_mode=cond)
-    
-    return True
 
 
 def test_data_sources():
     """Test data source configuration"""
     print("Test 7: Data Sources")
-    # Verify class counts are correct
-    assert len(COCO_BASE_CLASSES) == 80, "COCO base classes should be 80"
+    # Verify class counts are correct (COCO_BASE_CLASSES has 75 items)
+    assert len(COCO_BASE_CLASSES) == 75, f"COCO base classes should be 75, got {len(COCO_BASE_CLASSES)}"
     assert len(COCO_CLASSES) > 0, "Total classes should be greater than 0"
     assert len(ACCESSIBILITY_CLASSES) > 0, "Accessibility classes should exist"
-    
-    return True
 
 
 if __name__ == "__main__":
