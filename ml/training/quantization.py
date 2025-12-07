@@ -431,9 +431,9 @@ def quantize_validation(
     
     
     if ready_for_export:
-        print("✅ QUANTIZATION COMPLETE - Sprint complete")
+        print("QUANTIZATION COMPLETE - Sprint complete")
     else:
-        print("⚠️  QUANTIZATION COMPLETE - Model may need tuning before export")
+        print("QUANTIZATION COMPLETE - Model may need tuning before export")
         if not size_info.get('meets_target', False):
             print("Size target does not met")
         if not validation.get('meets_tolerance', False):
