@@ -3,7 +3,6 @@ Enhanced Description Generator for MaxSight
 Generates natural, actionable descriptions with direction, distance, and context.
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module is central to MaxSight's core mission: "Removing Barriers for Vision & Hearing Disabilities."
 
 WHY THIS APPROACH:
