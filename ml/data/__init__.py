@@ -6,10 +6,8 @@
 # Usage: from ml.data.dataset import MaxSightDataset
 
 from .dataset import MaxSightDataset
-from .generate_annotations import generate_annotations_from_coco
 
 __all__ = [
     'MaxSightDataset',
-    'generate_annotations_from_coco',
 ]
 

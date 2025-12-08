@@ -3,7 +3,6 @@ Path Planning Module for MaxSight
 Uses hazard and distance info to suggest safe navigation paths.
 
 PROJECT PHILOSOPHY & APPROACH:
-=============================
 This module implements "Path Planning" - going beyond obstacle detection to provide actionable
 navigation guidance. This directly addresses "Navigation Assistance" by suggesting safe routes,
 not just identifying obstacles.
@@ -37,7 +36,6 @@ from typing import Dict, List, Optional, Tuple, Any
 from enum import Enum
 from dataclasses import dataclass
 
-
 class PathDirection(Enum):
     """Safe navigation directions"""
     FORWARD = "forward"
@@ -45,7 +43,6 @@ class PathDirection(Enum):
     RIGHT = "right"
     BACKWARD = "backward"
     STOP = "stop"
-
 
 @dataclass
 class PathSuggestion:
@@ -64,7 +61,6 @@ class PathSuggestion:
     safety_score: float  # 0-1, higher = safer
     distance: float  # Estimated safe distance (meters or normalized)
     reasoning: str  # Explanation for detailed mode
-
 
 class PathPlanner:
     """
@@ -338,7 +334,6 @@ class PathPlanner:
         
         else:  # detailed
             return path.reasoning
-
 
 def create_path_planner(safety_threshold: float = 0.7) -> PathPlanner:
     """Factory function to create path planner."""

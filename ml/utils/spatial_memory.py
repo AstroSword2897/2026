@@ -3,7 +3,6 @@ Spatial Memory System for MaxSight
 Tracks object positions over time to build cognitive maps of the environment.
 
 PROJECT PHILOSOPHY & APPROACH:
-=============================
 This module implements "Visual Memory & Cognitive Mapping" - a critical component for helping users
 build mental models of their environment. This is not just about remembering objects, but about
 supporting the cognitive process of spatial understanding that sighted people develop naturally.
@@ -55,10 +54,20 @@ except ImportError:
     SCIPY_AVAILABLE = False
     KDTree = None
 
-
-
 @dataclass
 class SpatialObject:
+    """
+    Represents an object in spatial memory.
+    
+    WHY WE TRACK THESE ATTRIBUTES:
+    - position: Where the object is (for spatial mapping)
+    - size: How big it is (for distance estimation)
+    - seen_count: How often seen (for stability calculation)
+    - stability: How much it moves (furniture vs. people)
+    
+    These attributes support the cognitive mapping process - users need to know not just what objects
+    exist, but where they are consistently located, which helps build mental models of space.
+    """
     class_name: str
     position: Tuple[float, float]  # (cx, cy) normalized
     size: Tuple[float, float]  # (w, h) normalized
@@ -67,10 +76,23 @@ class SpatialObject:
     last_seen: float
     seen_count: int
     stability: float  # 0-1, how stable the position is
+    # For incremental stability calculation
     position_sum: Tuple[float, float] = field(default_factory=lambda: (0.0, 0.0))
     position_sq_sum: Tuple[float, float] = field(default_factory=lambda: (0.0, 0.0))
 
 class SpatialMemory:
+    """
+    Maintains spatial memory of objects for cognitive mapping.
+    Tracks object positions over time to help users build mental models.
+    
+    WHY THIS CLASS EXISTS:
+    Real-time object detection tells users "what's there now" but doesn't help them understand
+    "what's usually there" or "what changed." This class bridges that gap by maintaining a short-term
+    memory of the environment, enabling contextual reminders and spatial awareness development.
+    
+    This supports the project's focus on skill development - users don't just get information, they
+    build understanding over time through consistent spatial information.
+    """
     
     def __init__(
         self,
@@ -219,18 +241,20 @@ class SpatialMemory:
             self.spatial_index[class_name] = None
         self._spatial_index_dirty[class_name] = False
     
-    
     def _find_matching_object(
         self,
         class_name: str,
         position: Tuple[float, float]
     ) -> Optional[SpatialObject]:
+        """Find object of same class near the given position using spatial indexing"""
         if class_name not in self.objects or not self.objects[class_name]:
             return None
         
+        # Rebuild index if dirty
         if self._spatial_index_dirty.get(class_name, True):
             self._rebuild_spatial_index(class_name)
         
+        # Use KDTree if available, fallback to linear search
         if SCIPY_AVAILABLE and class_name in self.spatial_index:
             tree = self.spatial_index[class_name]
             if tree is not None:
@@ -239,8 +263,10 @@ class SpatialMemory:
                     if distances[0] < self.position_threshold and indices[0] < len(self.objects[class_name]):
                         return self.objects[class_name][indices[0]]
                 except (ValueError, IndexError):
+                    # Fallback to linear search on error
                     pass
-    
+        
+        # Fallback: linear search (for small lists or when scipy unavailable)
         cx, cy = position
         for obj in self.objects[class_name]:
             obj_cx, obj_cy = obj.position
@@ -338,6 +364,12 @@ class SpatialMemory:
                     del self.position_history[class_name]
     
     def get_stable_objects(self) -> List[SpatialObject]:
+        """
+        Get objects that are stable (not moving, frequently seen).
+        
+        Returns:
+            List of stable spatial objects
+        """
         with self._lock:
             stable = []
             for objects_list in self.objects.values():
@@ -373,6 +405,38 @@ class SpatialMemory:
         self,
         current_detections: List[Dict]
     ) -> Optional[str]:
+        """
+        Generate contextual reminder based on spatial memory.
+        
+        WHY CONTEXTUAL REMINDERS MATTER:
+        This function implements the "Visual Memory & Cognitive Mapping" goal by providing contextual
+        information that helps users understand their environment over time. A sighted person notices
+        "I just passed that door" or "these stairs are always here" - this function provides that same
+        contextual awareness.
+        
+        HOW IT SUPPORTS INDEPENDENT NAVIGATION:
+        Contextual reminders help users:
+        1. Build confidence ("I've been here before, I know what's ahead")
+        2. Understand changes ("Door you just passed is now closed")
+        3. Develop spatial awareness ("Stairs ahead as before" reinforces location memory)
+        
+        This directly supports "Skill Development Across Senses" - users learn spatial relationships
+        through consistent, structured reminders, building the cognitive maps that sighted people
+        develop naturally.
+        
+        RELATIONSHIP TO THERAPY GOALS:
+        For users with vision therapy goals, contextual reminders provide the repetition and
+        reinforcement needed to develop spatial cognition. This is not just convenience - it's
+        therapeutic support for building visual-spatial skills.
+        
+        Implements: "Door you just passed is closed" or "Stairs ahead as before"
+        
+        Arguments:
+            current_detections: Current frame detections
+        
+        Returns:
+            Contextual reminder string or None
+        """
         with self._lock:
             if not current_detections:
                 return None
@@ -422,6 +486,12 @@ class SpatialMemory:
             return None
     
     def get_spatial_summary(self) -> Dict[str, Any]:
+        """
+        Get summary of spatial memory state.
+        
+        Returns:
+            Dictionary with memory statistics
+        """
         with self._lock:
             total_objects = sum(len(objs) for objs in self.objects.values())
             stable_count = len(self.get_stable_objects())

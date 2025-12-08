@@ -19,7 +19,7 @@ through audio, enabling users to access information that would otherwise be inac
 
 HOW IT CONNECTS TO THE PROBLEM STATEMENT:
 The problem asks: "What are ways that those who cannot see... be able to interact with the
-world like those who can?" OCR integration answers by providing access to textual information
+world like those can?" OCR integration answers by providing access to textual information
 through audio, enabling users to read signs, labels, and documents independently.
 
 RELATIONSHIP TO BARRIER REMOVAL METHODS:
@@ -38,6 +38,83 @@ This module provides:
 - Text region detection (using model's text_head)
 - OCR text extraction (iOS Vision framework integration)
 - Text-to-speech pipeline for reading aloud
+
+iOS VISION FRAMEWORK INTEGRATION PLAN:
+
+Phase 1: Model-Based Text Region Detection (Current - Python)
+- Uses MaxSightCNN text_head to detect text regions
+- Provides bounding boxes and confidence scores
+- Efficient for real-time processing
+
+Phase 2: iOS Vision Framework Integration (Production)
+- Replace pytesseract with VNRecognizeTextRequest
+- Use Vision framework for OCR on detected regions
+- Leverage iOS Neural Engine for hardware acceleration
+
+Implementation Steps for iOS:
+
+1. Swift/iOS Integration:
+   ```swift
+   import Vision
+   
+   func recognizeText(in image: CIImage, regions: [CGRect]) -> [VNRecognizedTextObservation] {
+       let request = VNRecognizeTextRequest { request, error in
+           // Handle results
+       }
+       request.recognitionLevel = .accurate
+       request.usesLanguageCorrection = true
+       
+       let handler = VNImageRequestHandler(ciImage: image, options: [:])
+       try? handler.perform([request])
+       
+       return request.results as? [VNRecognizedTextObservation] ?? []
+   }
+   ```
+
+2. Bridge Python Model Outputs to iOS:
+   - Export text_head outputs (text_scores, boxes) from .pte model
+   - Convert to CGRect regions in Swift
+   - Pass regions to Vision framework for OCR
+
+3. Data Flow:
+   ```
+   Camera Frame → MaxSightCNN → text_head → text_regions (CGRect[])
+   → VNRecognizeTextRequest → recognized_text → TTS → Audio Output
+   ```
+
+4. Performance Optimization:
+   - Use Vision framework's on-device processing (Neural Engine)
+   - Batch process multiple regions in single request
+   - Cache results for static text (signs, labels)
+
+5. Fallback Strategy:
+   - If Vision framework fails, use model's text_head confidence
+   - Provide bounding box coordinates for manual review
+   - Log failures for model improvement
+
+6. Integration Points:
+   - MaxSightCNN.forward() → text_regions output
+   - OCRIntegration.process_image_for_ocr() → iOS Vision wrapper
+   - DescriptionGenerator → includes text in scene descriptions
+   - CrossModalScheduler → prioritizes text reading alerts
+
+7. Testing:
+   - Unit tests: Mock Vision framework responses
+   - Integration tests: Real device testing with various text types
+   - Performance tests: Measure latency on iPhone Neural Engine
+
+Benefits of iOS Vision Framework:
+- Hardware acceleration via Neural Engine
+- High accuracy (Apple's trained models)
+- Language support (50+ languages)
+- Real-time performance (<100ms for typical text)
+- Privacy (on-device processing)
+
+Migration Path:
+1. Keep Python implementation for development/testing
+2. Implement iOS wrapper in Swift
+3. A/B test Python vs iOS for accuracy
+4. Switch to iOS in production once validated
 """
 
 import torch
@@ -46,7 +123,6 @@ from typing import List, Dict, Optional, Tuple
 from pathlib import Path
 import numpy as np
 from PIL import Image
-
 
 class OCRIntegration:
     """
@@ -189,7 +265,7 @@ class OCRIntegration:
             
             for label in unique_labels:
                 cluster_mask = labels == label
-                cluster_coords = coords[cluster_mask]  # type: ignore[index]
+                cluster_coords = coords[cluster_mask]
                 
                 if len(cluster_coords) > 0:
                     x_min = int(cluster_coords[:, 0].min())
@@ -209,44 +285,90 @@ class OCRIntegration:
             
             return regions
         
-        # Simple distance-based clustering (fallback)
-        regions = []
-        used = set()
-        
-        for i, (x, y) in enumerate(coords):
-            if i in used:
-                continue
+        # Optimized distance-based clustering (fallback) using cKDTree for O(N log N) performance
+        # Vectorized approach: use scipy.spatial.cKDTree if available, otherwise simple O(N²) fallback
+        try:
+            from scipy.spatial import cKDTree  # type: ignore
             
-            # Start new region
-            cluster = [i]
-            used.add(i)
-            x_min, y_min, x_max, y_max = x, y, x, y
+            # Build KD-tree for efficient nearest neighbor search
+            tree = cKDTree(coords)
+            regions = []
+            used = set()
             
-            # Find nearby pixels
-            for j, (x2, y2) in enumerate(coords):
-                if j in used or j == i:
+            for i, (x, y) in enumerate(coords):
+                if i in used:
                     continue
                 
-                distance = np.sqrt((x - x2)**2 + (y - y2)**2)
-                if distance < cluster_distance:
+                # Start new region
+                cluster = [i]
+                used.add(i)
+                x_min, y_min, x_max, y_max = x, y, x, y
+                
+                # Find all neighbors within cluster_distance using KD-tree (O(log N) per query)
+                neighbors = tree.query_ball_point((x, y), cluster_distance)
+                
+                for j in neighbors:
+                    if j in used or j == i:
+                        continue
                     cluster.append(j)
                     used.add(j)
+                    x2, y2 = coords[j]
                     x_min = min(x_min, x2)
                     y_min = min(y_min, y2)
                     x_max = max(x_max, x2)
                     y_max = max(y_max, y2)
+                
+                # Add padding
+                padding = 2
+                x_min = max(0, int(x_min) - padding)
+                y_min = max(0, int(y_min) - padding)
+                x_max = min(w - 1, int(x_max) + padding)
+                y_max = min(h - 1, int(y_max) + padding)
+                
+                if x_max > x_min and y_max > y_min:
+                    regions.append((x_min, y_min, x_max, y_max))
             
-            # Add padding
-            padding = 2
-            x_min = max(0, int(x_min) - padding)
-            y_min = max(0, int(y_min) - padding)
-            x_max = min(w - 1, int(x_max) + padding)
-            y_max = min(h - 1, int(y_max) + padding)
+            return regions
             
-            if x_max > x_min and y_max > y_min:
-                regions.append((x_min, y_min, x_max, y_max))
-        
-        return regions
+        except ImportError:
+            # Fallback to simple O(N²) clustering if scipy not available
+            regions = []
+            used = set()
+            
+            for i, (x, y) in enumerate(coords):
+                if i in used:
+                    continue
+                
+                # Start new region
+                cluster = [i]
+                used.add(i)
+                x_min, y_min, x_max, y_max = x, y, x, y
+                
+                # Find nearby pixels (O(N) per pixel)
+                for j, (x2, y2) in enumerate(coords):
+                    if j in used or j == i:
+                        continue
+                    
+                    distance = np.sqrt((x - x2)**2 + (y - y2)**2)
+                    if distance < cluster_distance:
+                        cluster.append(j)
+                        used.add(j)
+                        x_min = min(x_min, x2)
+                        y_min = min(y_min, y2)
+                        x_max = max(x_max, x2)
+                        y_max = max(y_max, y2)
+                
+                # Add padding
+                padding = 2
+                x_min = max(0, int(x_min) - padding)
+                y_min = max(0, int(y_min) - padding)
+                x_max = min(w - 1, int(x_max) + padding)
+                y_max = min(h - 1, int(y_max) + padding)
+                
+                if x_max > x_min and y_max > y_min:
+                    regions.append((x_min, y_min, x_max, y_max))
+            
+            return regions
     
     def extract_text_from_region(
         self,
@@ -477,7 +599,6 @@ class OCRIntegration:
         
         return results
 
-
 def create_text_description(text_results: List[Dict], verbosity: str = 'normal') -> str:
     """
     Create natural language description of detected text with line/block grouping.
@@ -518,7 +639,6 @@ def create_text_description(text_results: List[Dict], verbosity: str = 'normal')
             distance = "near" if group['box'][1] < 0.33 else ("far" if group['box'][1] > 0.67 else "center")
             descriptions.append(f"Text {i} ({pos}, {distance}): {group['text']}")
         return "; ".join(descriptions)
-
 
 def _group_text_by_proximity(text_results: List[Dict], proximity_threshold: float = 0.1) -> List[Dict]:
     """
@@ -584,7 +704,6 @@ def _group_text_by_proximity(text_results: List[Dict], proximity_threshold: floa
     
     return groups
 
-
 def read_text_aloud(text: str) -> None:
     """
     Read text aloud using TTS (text-to-speech).
@@ -611,7 +730,6 @@ def read_text_aloud(text: str) -> None:
     except Exception as e:
         print(f"TTS error: {e}")
         print(f"Text: {text}")
-
 
 if __name__ == "__main__":
     # Test OCR integration

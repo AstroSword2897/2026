@@ -56,7 +56,7 @@ def test_condition_preprocessing():
     
     # Create image as numpy array (preprocessor expects PIL or numpy)
     dummy_image_np = np.random.rand(224, 224, 3).astype(np.float32)
-    dummy_image_np = (dummy_image_np * 255).astype(np.uint8)
+    dummy_image_np = (dummy_image_np * 255.0).astype(np.uint8)  # type: ignore[operator]
     
     for cond in test_conditions:
         try:

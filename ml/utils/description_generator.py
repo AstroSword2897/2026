@@ -3,7 +3,6 @@ Enhanced Description Generator for MaxSight
 Generates natural, actionable descriptions with direction, distance, and context.
 
 PROJECT PHILOSOPHY & APPROACH:
-=============================
 This module is central to MaxSight's core mission: "Removing Barriers for Vision & Hearing Disabilities."
 
 WHY THIS APPROACH:
@@ -57,7 +56,6 @@ We use verbosity levels (brief/normal/detailed) rather than a single format beca
 import torch
 from typing import Dict, List, Optional, Tuple
 import math
-
 
 class DescriptionGenerator:
     """
@@ -165,12 +163,19 @@ class DescriptionGenerator:
         Get distance description from zone and optional size.
         
         Arguments:
-            distance_zone: 0 (near), 1 (medium), 2 (far)
+            distance_zone: 0 (near), 1 (medium), 2 (far) or string ('near', 'medium', 'far')
             box_size: Optional box area for more precise estimation
         
         Returns:
             Distance description string
         """
+        # Handle string distance zones (convert to int)
+        if isinstance(distance_zone, str):
+            distance_map = {'near': 0, 'medium': 1, 'far': 2}
+            distance_zone = distance_map.get(distance_zone.lower(), 1)
+        
+        # Ensure distance_zone is int and in valid range
+        distance_zone = int(distance_zone)
         if distance_zone < 0 or distance_zone >= len(self.DISTANCE_NAMES):
             distance_zone = 1  # Default to medium
         
@@ -289,6 +294,11 @@ class DescriptionGenerator:
         priority: Optional[int] = None,
         verbosity: Optional[str] = None
     ) -> str:
+        # Handle string distance zones (convert to int)
+        if isinstance(distance_zone, str):
+            distance_map = {'near': 0, 'medium': 1, 'far': 2}
+            distance_zone = distance_map.get(distance_zone.lower(), 1)
+        distance_zone = int(distance_zone)
         """
         Generate natural language description for a single object.
         
@@ -509,10 +519,17 @@ class DescriptionGenerator:
             return "Clear path ahead"
         
         # Filter for obstacles (high urgency, near objects)
-        obstacles = [
-            d for d in detections
-            if d.get('urgency', 0) >= 2 and d.get('distance', 2) <= 1
-        ]
+        # Handle distance as either int (zone) or string (name)
+        obstacles = []
+        for d in detections:
+            urgency = d.get('urgency', 0)
+            distance = d.get('distance', 2)
+            # Convert string distance to zone if needed
+            if isinstance(distance, str):
+                distance_map = {'near': 0, 'medium': 1, 'far': 2}
+                distance = distance_map.get(distance.lower(), 1)
+            if urgency >= 2 and distance <= 1:
+                obstacles.append(d)
         
         if not obstacles:
             return "Clear path ahead"
@@ -572,12 +589,11 @@ class DescriptionGenerator:
         urgency_word = self.URGENCY_NAMES[urgency] if urgency < len(self.URGENCY_NAMES) else 'warning'
         
         if urgency >= 3:  # Danger
-            return f"DANGER: {class_name} {distance_desc} {h_dir}"
+            return f"⚠️ DANGER: {class_name} {distance_desc} {h_dir}"
         elif urgency >= 2:  # Warning
-            return f"Warning: {class_name} {distance_desc} {h_dir}"
+            return f"⚠️ Warning: {class_name} {distance_desc} {h_dir}"
         else:  # Caution
             return f"Caution: {class_name} {distance_desc} {h_dir}"
-
 
 def create_description_generator(verbosity: str = 'normal') -> DescriptionGenerator:
     """Factory function to create description generator."""
