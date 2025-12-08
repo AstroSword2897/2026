@@ -433,16 +433,16 @@ class ModelBenchmark:
                 t1 = time.perf_counter()
                 timings.append((t1 - t0) / len(test_inputs) * 1000)  # type: ignore[operator] # ms per input
         
-        timings = np.array(timings)
+        timings_array = np.array(timings, dtype=np.float64)
         
         return {
-            'mean_ms': float(np.mean(timings)),
-            'std_ms': float(np.std(timings)),
-            'median_ms': float(np.median(timings)),
-            'p95_ms': float(np.percentile(timings, 95)),
-            'p99_ms': float(np.percentile(timings, 99)),
-            'min_ms': float(np.min(timings)),
-            'max_ms': float(np.max(timings)),
+            'mean_ms': float(np.mean(timings_array)),  # type: ignore[arg-type]
+            'std_ms': float(np.std(timings_array)),  # type: ignore[arg-type]
+            'median_ms': float(np.median(timings_array)),  # type: ignore[arg-type]
+            'p95_ms': float(np.percentile(timings_array, 95)),  # type: ignore[arg-type]
+            'p99_ms': float(np.percentile(timings_array, 99)),  # type: ignore[arg-type]
+            'min_ms': float(np.min(timings_array)),  # type: ignore[arg-type]
+            'max_ms': float(np.max(timings_array)),  # type: ignore[arg-type]
         }
     
     @staticmethod

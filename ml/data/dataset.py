@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 import torchaudio
 
-from ml.models.maxsight_cnn import COCO_CLASSES, NUM_CLASSES
+from ml.models.maxsight_cnn import COCO_CLASSES
 from ml.utils.preprocessing import ImagePreprocessor
 
 class MaxSightDataset(Dataset):
