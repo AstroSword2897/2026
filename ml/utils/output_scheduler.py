@@ -3,7 +3,6 @@ Cross-Modal Output Scheduler
 Manages frequency, intensity, and channel prioritization for accessibility outputs.
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module is central to MaxSight's "Clear Multimodal Communication" barrier removal method. It
 transforms the technical problem of "what information to present" into the human-centered problem
 of "how to present information in a way that's useful, not overwhelming."
