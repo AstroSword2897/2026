@@ -3,7 +3,6 @@ Semantic Grouping Module for MaxSight
 Groups related objects into semantic clusters for concise scene descriptions.
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module implements "Semantic Grouping" - combining related objects into single descriptions
 for brevity and clarity. This directly addresses the "Clear, Concise Outputs" goal by preventing
 information overload while maintaining useful information.
