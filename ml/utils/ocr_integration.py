@@ -3,7 +3,6 @@ OCR Integration Module for MaxSight
 Sprint 1 Day 5: OCR Integration & Text Reading
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module implements "Reads Environment" capability - detecting and reading text from the
 environment. This directly addresses the problem statement's requirement for text reading
 support, enabling users to read signs, labels, and documents.
