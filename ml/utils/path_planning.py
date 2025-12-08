@@ -3,7 +3,6 @@ Path Planning Module for MaxSight
 Uses hazard and distance info to suggest safe navigation paths.
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module implements "Path Planning" - going beyond obstacle detection to provide actionable
 navigation guidance. This directly addresses "Navigation Assistance" by suggesting safe routes,
 not just identifying obstacles.
