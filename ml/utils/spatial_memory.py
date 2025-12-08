@@ -3,7 +3,6 @@ Spatial Memory System for MaxSight
 Tracks object positions over time to build cognitive maps of the environment.
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module implements "Visual Memory & Cognitive Mapping" - a critical component for helping users
 build mental models of their environment. This is not just about remembering objects, but about
 supporting the cognitive process of spatial understanding that sighted people develop naturally.
