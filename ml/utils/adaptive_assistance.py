@@ -3,7 +3,6 @@ Adaptive Assistance Module for MaxSight
 Ties verbosity and hazard alerts to user performance from session manager/therapy tasks.
 
 PROJECT PHILOSOPHY & APPROACH:
-
 This module implements "Adaptive Visual Assistance" - adjusting assistance levels based on user
 performance to support gradual independence. This directly addresses "Skill Development Across
 Senses" by reducing assistance as users improve, encouraging skill development rather than
