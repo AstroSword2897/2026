@@ -3,6 +3,7 @@ Adaptive Assistance Module for MaxSight
 Ties verbosity and hazard alerts to user performance from session manager/therapy tasks.
 
 PROJECT PHILOSOPHY & APPROACH:
+
 This module implements "Adaptive Visual Assistance" - adjusting assistance levels based on user
 performance to support gradual independence. This directly addresses "Skill Development Across
 Senses" by reducing assistance as users improve, encouraging skill development rather than
@@ -27,18 +28,25 @@ RELATIONSHIP TO BARRIER REMOVAL METHODS:
 1. SKILL DEVELOPMENT ACROSS SENSES: Core implementation - adapts assistance to support learning
 2. ROUTINE WORKFLOW: Adapts to user's demonstrated capabilities over time
 3. GRADUAL INDEPENDENCE: Reduces assistance as skills improve, increases when needed
+
+TECHNICAL DESIGN DECISION:
+We use performance metrics (accuracy, reaction time, skill progression) rather than time-based
+reduction because:
+- Different users improve at different rates
+- Performance-based adaptation is more responsive to actual needs
+- Supports both learning (detailed when struggling) and independence (brief when skilled)
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import time
-
 
 @dataclass
 class PerformanceMetrics:
     """
     Performance metrics for adaptive assistance.
     
+    WHY THESE METRICS:
     - accuracy: How well user identifies objects (higher = less assistance needed)
     - reaction_time: How quickly user responds (faster = more skilled)
     - skill_progression: Trend over time (improving = reduce assistance)
@@ -53,11 +61,11 @@ class PerformanceMetrics:
     hazard_awareness: float  # 0-1, how well user detects hazards
     session_count: int  # Number of sessions completed
 
-
 class AdaptiveAssistance:
     """
     Adapts assistance levels based on user performance.
     
+    WHY THIS CLASS EXISTS:
     This class bridges SessionManager (performance tracking) and OutputScheduler (assistance
     levels). It enables the system to automatically adjust verbosity, frequency, and hazard
     alert levels based on demonstrated user capabilities, supporting gradual independence
@@ -68,14 +76,27 @@ class AdaptiveAssistance:
         self,
         initial_verbosity: str = 'detailed',
         min_verbosity: str = 'brief',
-        max_verbosity: str = 'detailed'
+        max_verbosity: str = 'detailed',
+        use_ewma: bool = True,
+        ewma_alpha: float = 0.3,
+        accuracy_threshold_high: float = 0.8,
+        accuracy_threshold_low: float = 0.5,
+        reaction_time_threshold_fast: float = 1.0,
+        reaction_time_threshold_slow: float = 3.0,
+        skill_progression_threshold: float = 0.2,
+        hazard_awareness_threshold_high: float = 0.8,
+        hazard_awareness_threshold_low: float = 0.5
     ):
         """
         Initialize adaptive assistance.
         
+        WHY THESE PARAMETERS:
         - initial_verbosity: Start with detailed (supports learning)
         - min_verbosity: Never go below brief (maintains safety)
         - max_verbosity: Can increase to detailed when needed (supports struggling users)
+        - use_ewma: Use exponential weighted moving average for stability
+        - ewma_alpha: EWMA smoothing factor (0-1, higher = more responsive)
+        - *_threshold_*: Configurable thresholds for adaptation decisions
         
         This ensures assistance adapts within safe bounds while supporting skill development.
         
@@ -83,11 +104,34 @@ class AdaptiveAssistance:
             initial_verbosity: Starting verbosity level
             min_verbosity: Minimum verbosity (safety floor)
             max_verbosity: Maximum verbosity (support ceiling)
+            use_ewma: Enable EWMA smoothing for metrics
+            ewma_alpha: EWMA smoothing factor (0-1)
+            accuracy_threshold_high: High accuracy threshold (0-1)
+            accuracy_threshold_low: Low accuracy threshold (0-1)
+            reaction_time_threshold_fast: Fast reaction time threshold (seconds)
+            reaction_time_threshold_slow: Slow reaction time threshold (seconds)
+            skill_progression_threshold: Skill progression threshold (-1 to 1)
+            hazard_awareness_threshold_high: High hazard awareness threshold (0-1)
+            hazard_awareness_threshold_low: Low hazard awareness threshold (0-1)
         """
         self.initial_verbosity = initial_verbosity
         self.min_verbosity = min_verbosity
         self.max_verbosity = max_verbosity
         self.performance_history: List[PerformanceMetrics] = []
+        
+        # EWMA smoothing
+        self.use_ewma = use_ewma
+        self.ewma_alpha = ewma_alpha
+        self.ewma_metrics: Optional[PerformanceMetrics] = None
+        
+        # Configurable thresholds
+        self.accuracy_threshold_high = accuracy_threshold_high
+        self.accuracy_threshold_low = accuracy_threshold_low
+        self.reaction_time_threshold_fast = reaction_time_threshold_fast
+        self.reaction_time_threshold_slow = reaction_time_threshold_slow
+        self.skill_progression_threshold = skill_progression_threshold
+        self.hazard_awareness_threshold_high = hazard_awareness_threshold_high
+        self.hazard_awareness_threshold_low = hazard_awareness_threshold_low
     
     def update_performance(
         self,
@@ -120,11 +164,51 @@ class AdaptiveAssistance:
         )
         self.performance_history.append(metrics)
         
+        # Update EWMA metrics
+        if self.use_ewma:
+            if self.ewma_metrics is None:
+                self.ewma_metrics = metrics
+            else:
+                # Exponential weighted moving average
+                self.ewma_metrics = PerformanceMetrics(
+                    accuracy=self.ewma_alpha * metrics.accuracy + (1 - self.ewma_alpha) * self.ewma_metrics.accuracy,
+                    reaction_time=self.ewma_alpha * metrics.reaction_time + (1 - self.ewma_alpha) * self.ewma_metrics.reaction_time,
+                    skill_progression=self.ewma_alpha * metrics.skill_progression + (1 - self.ewma_alpha) * self.ewma_metrics.skill_progression,
+                    hazard_awareness=self.ewma_alpha * metrics.hazard_awareness + (1 - self.ewma_alpha) * self.ewma_metrics.hazard_awareness,
+                    session_count=metrics.session_count
+                )
+        
         # Keep only recent history (last 10 sessions)
         if len(self.performance_history) > 10:
             self.performance_history = self.performance_history[-10:]
     
-    def get_adaptive_verbosity(self) -> str:
+    def get_average_metrics(self) -> PerformanceMetrics:
+        """
+        Get rolling average metrics for stability.
+        
+        WHY THIS MATTERS:
+        Prevents abrupt verbosity changes based on single session. Uses rolling average
+        or EWMA for smoother adaptation.
+        
+        Returns:
+            Averaged performance metrics
+        """
+        if self.use_ewma and self.ewma_metrics is not None:
+            return self.ewma_metrics
+        
+        if not self.performance_history:
+            return PerformanceMetrics(0, 2.0, 0, 0, 0)
+        
+        n = len(self.performance_history)
+        return PerformanceMetrics(
+            accuracy=sum(m.accuracy for m in self.performance_history) / n,
+            reaction_time=sum(m.reaction_time for m in self.performance_history) / n,
+            skill_progression=sum(m.skill_progression for m in self.performance_history) / n,
+            hazard_awareness=sum(m.hazard_awareness for m in self.performance_history) / n,
+            session_count=self.performance_history[-1].session_count
+        )
+    
+    def get_adaptive_verbosity(self, use_numeric: bool = False) -> Any:
         """
         Get adaptive verbosity based on performance.
         
@@ -137,29 +221,41 @@ class AdaptiveAssistance:
         This supports "Skill Development Across Senses" by providing appropriate detail levels
         that encourage learning without creating dependence.
         
+        Arguments:
+            use_numeric: If True, return numeric level (0-3) instead of string
+        
         Returns:
-            Adaptive verbosity level ('brief', 'normal', 'detailed')
+            Adaptive verbosity level ('brief', 'normal', 'detailed') or numeric (0-3)
         """
         if not self.performance_history:
+            if use_numeric:
+                return {'brief': 0, 'normal': 1, 'detailed': 2, 'very_detailed': 3}.get(self.initial_verbosity, 1)
             return self.initial_verbosity
         
-        latest = self.performance_history[-1]
+        # Use averaged metrics for stability
+        metrics = self.get_average_metrics()
         
         # High performance + improving = reduce verbosity
-        if latest.accuracy > 0.8 and latest.skill_progression > 0.2:
+        if metrics.accuracy > self.accuracy_threshold_high and metrics.skill_progression > self.skill_progression_threshold:
             # User is skilled and improving - encourage independence
+            if use_numeric:
+                return 0  # brief
             if self.min_verbosity == 'brief':
                 return 'brief'
             return 'normal'
         
         # Low performance or declining = increase verbosity
-        if latest.accuracy < 0.5 or latest.skill_progression < -0.2:
+        if metrics.accuracy < self.accuracy_threshold_low or metrics.skill_progression < -self.skill_progression_threshold:
             # User is struggling - provide more support
+            if use_numeric:
+                return 3  # very_detailed
             if self.max_verbosity == 'detailed':
                 return 'detailed'
             return 'normal'
         
         # Medium performance = normal verbosity
+        if use_numeric:
+            return 1  # normal
         return 'normal'
     
     def get_adaptive_frequency(self) -> str:
@@ -181,14 +277,15 @@ class AdaptiveAssistance:
         if not self.performance_history:
             return 'medium'
         
-        latest = self.performance_history[-1]
+        # Use averaged metrics for stability
+        metrics = self.get_average_metrics()
         
         # High performance = reduce frequency
-        if latest.accuracy > 0.8 and latest.reaction_time < 1.0:
+        if metrics.accuracy > self.accuracy_threshold_high and metrics.reaction_time < self.reaction_time_threshold_fast:
             return 'low'  # User is skilled - minimal interruption
         
         # Low performance = increase frequency
-        if latest.accuracy < 0.5 or latest.reaction_time > 3.0:
+        if metrics.accuracy < self.accuracy_threshold_low or metrics.reaction_time > self.reaction_time_threshold_slow:
             return 'high'  # User needs more guidance
         
         return 'medium'
@@ -211,14 +308,15 @@ class AdaptiveAssistance:
         if not self.performance_history:
             return 1  # Default: alert to caution and above
         
-        latest = self.performance_history[-1]
+        # Use averaged metrics for stability
+        metrics = self.get_average_metrics()
         
         # High hazard awareness = only high-urgency alerts
-        if latest.hazard_awareness > 0.8:
+        if metrics.hazard_awareness > self.hazard_awareness_threshold_high:
             return 2  # Only warning and danger
         
         # Low hazard awareness = alert to all hazards
-        if latest.hazard_awareness < 0.5:
+        if metrics.hazard_awareness < self.hazard_awareness_threshold_low:
             return 0  # Alert to all urgency levels
         
         return 1  # Default: caution and above
@@ -241,7 +339,6 @@ class AdaptiveAssistance:
             'hazard_threshold': self.get_adaptive_hazard_threshold()
         }
 
-
 def create_adaptive_assistance_from_session(
     session_manager,
     initial_verbosity: str = 'detailed'
@@ -249,6 +346,7 @@ def create_adaptive_assistance_from_session(
     """
     Create adaptive assistance from session manager.
     
+    WHY THIS FUNCTION:
     Bridges SessionManager (performance tracking) and AdaptiveAssistance (assistance adaptation).
     This enables automatic assistance level adjustment based on therapy session performance,
     supporting gradual independence through data-driven adaptation.
