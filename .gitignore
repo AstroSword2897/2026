@@ -80,3 +80,4 @@ Miniforge3-MacOSX-arm64.sh
 # Copied from 2026-prototype (do not track)
 ml/models/attention/cbam_attention.py
 ml/models/attention/cross_modal_attention.py
+ml/models/attention/cross_task_attention.py
