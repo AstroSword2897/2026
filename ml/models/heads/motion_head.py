@@ -1,198 +1,144 @@
 """
-Motion/Flow Head for MaxSight Therapy System
+Transformer-Based OCR Head for MaxSight 3.0
 
-Outputs optical flow for motion tracking therapy tasks and temporal understanding.
-
-PROJECT PHILOSOPHY & APPROACH:
-This module implements optical flow estimation as part of MaxSight's therapy system.
-Motion tracking is critical for understanding dynamic scenes and supporting motion-based
-therapy exercises that help users develop visual tracking skills.
-
-WHY MOTION TRACKING MATTERS:
-Motion tracking enables:
-
-1. Motion-based therapy: Exercises that train users to track moving objects
-2. Dynamic scene understanding: Understanding how objects move in the environment
-3. Temporal consistency: Better object tracking across video frames
-4. Navigation assistance: Detecting moving obstacles (vehicles, people)
-
-HOW IT CONNECTS TO THE PROBLEM STATEMENT:
-The problem emphasizes "Skill Development Across Senses" - motion tracking therapy
-exercises help users develop visual tracking skills, improving their ability to
-navigate dynamic environments and track moving objects.
-
-RELATIONSHIP TO BARRIER REMOVAL METHODS:
-1. SKILL DEVELOPMENT: Enables motion tracking therapy exercises
-2. ENVIRONMENTAL STRUCTURING: Provides motion information for dynamic scene understanding
-3. NAVIGATION ASSISTANCE: Detects moving obstacles for safer navigation
-
-TECHNICAL DESIGN DECISIONS:
-- Coarse-to-fine architecture: Initial coarse prediction + optional refinement
-- BatchNorm: Training stability for convolutional layers
-- Smoothness regularization: Encourages smooth flow fields (more realistic)
-- Tanh output: Normalizes flow to [-1, 1] range for interpretability
-
-Phase 2: Therapy Heads
-See docs/therapy_system_implementation_plan.md for implementation details.
+Transformer encoder for text detection and decoder for text recognition.
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, List, Tuple
 
 
-class MotionHead(nn.Module):
+class TransformerOCRHead(nn.Module):
     """
-    Motion/flow head for therapy tasks and temporal understanding.
-    
-    WHY THIS CLASS EXISTS:
-    Optical flow estimation enables motion tracking therapy exercises and dynamic scene
-    understanding. This head processes temporal features to estimate per-pixel motion
-    vectors (u, v) that represent how pixels move between frames.
-    
-    This information enables:
-    - Motion tracking therapy: Exercises that train users to track moving objects
-    - Dynamic scene understanding: Understanding object movement patterns
-    - Temporal consistency: Better object tracking across video frames
+    Transformer-based OCR head.
     
     Architecture:
-    - Input: Temporal features [B, C, H, W] from temporal encoder
-    - Coarse network: Initial motion estimation
-    - Refinement network (optional): Refines coarse prediction for better accuracy
-    - Output: Motion flow [B, 2, H, W] with (u, v) channels in [-1, 1] range
-    
-    Arguments:
-        in_channels: Number of input channels from temporal encoder (default: 128)
-        hidden_channels: Hidden layer channels (default: 64)
-        use_refinement: Enable refinement module for better accuracy (default: True)
+    - Transformer encoder: Text detection
+    - Transformer decoder: Text recognition
+    - Scene-text contextual embedding: Integration with object detection
     """
     
     def __init__(
-        self, 
-        in_channels: int = 128,
-        hidden_channels: int = 64,
-        use_refinement: bool = True
+        self,
+        input_dim: int = 256,
+        embed_dim: int = 512,
+        num_heads: int = 8,
+        num_encoder_layers: int = 6,
+        num_decoder_layers: int = 6,
+        vocab_size: int = 10000,  # Character vocabulary
+        max_text_length: int = 50
     ):
-        """
-        Initialize motion head.
-        
-        Arguments:
-            in_channels: Number of input channels from temporal encoder
-            hidden_channels: Hidden layer channels for feature extraction
-            use_refinement: Enable refinement module for better flow accuracy
-        """
         super().__init__()
-        self.in_channels = in_channels
-        self.use_refinement = use_refinement
         
-        # Coarse motion estimation
-        # WHY COARSE-TO-FINE:
-        # - Initial coarse prediction captures large motions
-        # - Refinement module corrects fine details
-        # - More accurate than single-stage prediction
-        self.coarse_net = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(hidden_channels),  # Training stability
-            nn.ReLU(inplace=True),
-            nn.Conv2d(hidden_channels, hidden_channels // 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(hidden_channels // 2),
-            nn.ReLU(inplace=True)
+        self.embed_dim = embed_dim
+        self.vocab_size = vocab_size
+        self.max_text_length = max_text_length
+        
+        # Input projection
+        self.input_proj = nn.Linear(input_dim, embed_dim)
+        
+        # Positional encoding
+        self.pos_encoding = nn.Parameter(
+            torch.randn(1, max_text_length, embed_dim) * 0.02
         )
         
-        # Initial flow prediction
-        self.flow_pred = nn.Conv2d(hidden_channels // 2, 2, kernel_size=1)  # (u, v) channels
+        # Transformer encoder for text detection
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim,
+            nhead=num_heads,
+            dim_feedforward=embed_dim * 4,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_encoder_layers)
         
-        # Optional refinement module for better accuracy
-        if use_refinement:
-            # WHY REFINEMENT:
-            # - Corrects errors in coarse prediction
-            # - Handles fine details and small motions
-            # - Residual connection preserves coarse prediction
-            self.refinement_net = nn.Sequential(
-                nn.Conv2d(hidden_channels // 2 + 2, hidden_channels // 2, 
-                         kernel_size=3, padding=1, bias=False),
-                nn.BatchNorm2d(hidden_channels // 2),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(hidden_channels // 2, 2, kernel_size=1)
-            )
+        # Transformer decoder for text recognition
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embed_dim,
+            nhead=num_heads,
+            dim_feedforward=embed_dim * 4,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_decoder_layers)
         
-        self.tanh = nn.Tanh()  # Normalize to [-1, 1] range
+        # Character embedding
+        self.char_embedding = nn.Embedding(vocab_size, embed_dim)
+        
+        # Output projection
+        self.output_proj = nn.Linear(embed_dim, vocab_size)
+        
+        # Text region detection head
+        self.text_detection_head = nn.Sequential(
+            nn.Linear(embed_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 4)  # Bounding box coordinates
+        )
     
     def forward(
-        self, 
-        temporal_features: torch.Tensor,
-        return_features: bool = False
-    ) -> Union[torch.Tensor, Dict[str, Union[torch.Tensor, None]]]:
-        # Validate input
-        if temporal_features.dim() != 4:
-            raise ValueError(f"Expected 4D tensor [B, C, H, W], got {temporal_features.shape}")
-        
-        B, C, H, W = temporal_features.shape
-        if C != self.in_channels:
-            raise ValueError(
-                f"Expected {self.in_channels} channels, got {C}. "
-                f"Ensure input features match head configuration."
-            )
-        
-        # Extract features
-        features = self.coarse_net(temporal_features)
-        
-        # Coarse flow prediction
-        coarse_flow = self.flow_pred(features)
-        
-        # Optional refinement
-        if self.use_refinement:
-            # Concatenate features and coarse flow for refinement
-            refinement_input = torch.cat([features, coarse_flow], dim=1)
-            flow_residual = self.refinement_net(refinement_input)
-            # Residual connection: coarse + refinement
-            motion = self.tanh(coarse_flow + flow_residual)
-        else:
-            motion = self.tanh(coarse_flow)
-        
-        # Validate output
-        if torch.isnan(motion).any() or torch.isinf(motion).any():
-            raise RuntimeError(
-                "NaN/Inf detected in motion flow. Check input features and model initialization."
-            )
-        
-        if return_features:
-            result: Dict[str, Union[torch.Tensor, None]] = {
-                'flow': motion,
-                'features': features,
-            }
-            if self.use_refinement:
-                result['coarse_flow'] = coarse_flow
-            else:
-                result['coarse_flow'] = None
-            return result
-        
-        return motion
-    
-    def compute_smoothness_loss(self, flow: torch.Tensor) -> torch.Tensor:
+        self,
+        features: torch.Tensor,  # [B, N_regions, input_dim]
+        context_embeddings: Optional[torch.Tensor] = None,  # [B, N_objects, embed_dim]
+        target_text: Optional[torch.Tensor] = None  # [B, seq_len] for training
+    ) -> Dict[str, torch.Tensor]:
         """
-        Compute smoothness regularization loss.
+        Forward pass through OCR head.
         
-        WHY SMOOTHNESS LOSS:
-        Real optical flow fields are typically smooth (neighboring pixels move similarly).
-        Smoothness loss encourages this property, leading to more realistic and stable
-        flow predictions that are better for therapy exercises and scene understanding.
-        
-        Arguments:
-            flow: Predicted flow [B, 2, H, W]
+        Args:
+            features: Text region features [B, N_regions, input_dim]
+            context_embeddings: Optional object detection context [B, N_objects, embed_dim]
+            target_text: Optional target text for training [B, seq_len]
         
         Returns:
-            Smoothness loss scalar
+            Dictionary with:
+                - 'text_logits': [B, N_regions, vocab_size, max_length]
+                - 'text_boxes': [B, N_regions, 4]
+                - 'text_scores': [B, N_regions]
         """
-        # Compute spatial gradients (differences between neighboring pixels)
-        # Horizontal gradient: difference between adjacent columns
-        grad_x = torch.abs(flow[:, :, :, :-1] - flow[:, :, :, 1:])
-        # Vertical gradient: difference between adjacent rows
-        grad_y = torch.abs(flow[:, :, :-1, :] - flow[:, :, 1:, :])
+        B, N_regions, _ = features.shape
         
-        # Average across spatial dimensions and channels
-        # Lower gradient = smoother flow = better
-        smoothness = grad_x.mean() + grad_y.mean()
+        # Project input features
+        x = self.input_proj(features)  # [B, N_regions, embed_dim]
         
-        return smoothness
+        # Add positional encoding
+        x = x + self.pos_encoding[:, :N_regions, :]
+        
+        # Encode text regions
+        encoded = self.encoder(x)  # [B, N_regions, embed_dim]
+        
+        # Text detection: predict bounding boxes
+        text_boxes = self.text_detection_head(encoded)  # [B, N_regions, 4]
+        
+        # Text recognition: decode text
+        if target_text is not None:
+            # Training: use target text
+            tgt = self.char_embedding(target_text)  # [B, seq_len, embed_dim]
+            decoded = self.decoder(tgt, encoded)  # [B, seq_len, embed_dim]
+        else:
+            # Inference: autoregressive decoding
+            # Start with SOS token
+            sos_token = torch.zeros(B, 1, self.embed_dim, device=features.device)
+            decoded = []
+            for _ in range(self.max_text_length):
+                tgt = torch.cat([sos_token] + decoded, dim=1) if decoded else sos_token
+                out = self.decoder(tgt, encoded)
+                decoded.append(out[:, -1:, :])
+            
+            decoded = torch.cat(decoded, dim=1)  # [B, max_length, embed_dim]
+        
+        # Output logits
+        text_logits = self.output_proj(decoded)  # [B, max_length, vocab_size]
+        
+        # Text scores (confidence)
+        text_scores = F.softmax(text_logits, dim=-1).max(dim=-1)[0].mean(dim=1)  # [B, N_regions]
+        
+        return {
+            'text_logits': text_logits,
+            'text_boxes': text_boxes,
+            'text_scores': text_scores,
+            'encoded_features': encoded
+        }
+
+

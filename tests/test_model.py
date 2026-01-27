@@ -147,8 +147,6 @@ def test_inference_mode():
     
     print(" Inference mode test passed")
 
-
-if __name__ == "__main__":
     print("Running MaxSight CNN Tests")
     
     test_model_creation()

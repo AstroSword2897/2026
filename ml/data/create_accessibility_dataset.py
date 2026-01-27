@@ -31,9 +31,7 @@ import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as T
 
-# ============================================================================
-# Core Dataset (Pure Loader - No On-the-Fly Augmentation)
-# ============================================================================
+
 
 class AccessibilityDataset(Dataset):
     """
@@ -127,9 +125,6 @@ class AccessibilityDataset(Dataset):
             "labels": formatted_labels
         }
 
-# ============================================================================
-# Synthetic Augmentation Engine (Medically-Aligned)
-# ============================================================================
 
 class SyntheticImpairmentEngine:
     """
@@ -353,9 +348,7 @@ class SyntheticImpairmentEngine:
         
         return mask
 
-# ============================================================================
-# Synthetic Dataset Generator
-# ============================================================================
+
 
 def generate_synthetic_dataset(
     source: Path,
@@ -492,14 +485,11 @@ def generate_synthetic_dataset(
         'output_dir': str(output)
     }
     
-    print(f"✅ Generated {len(synthetic_labels)} synthetic samples → {output}")
+    print(f" Generated {len(synthetic_labels)} synthetic samples → {output}")
     print(f"   Annotations saved to: {annotations_file}")
     
     return stats
 
-# ============================================================================
-# Labeling Template
-# ============================================================================
 
 def create_label_template(path: Path):
     """
@@ -524,11 +514,8 @@ def create_label_template(path: Path):
     with open(path, 'w') as f:
         json.dump(template, f, indent=2)
     
-    print(f"✅ Labeling template saved → {path}")
+    print(f" Labeling template saved → {path}")
 
-# ============================================================================
-# Dataset Registry & Utilities
-# ============================================================================
 
 def combine_datasets(
     real_dir: Path,
@@ -593,13 +580,10 @@ def combine_datasets(
         'output_dir': str(output_dir)
     }
     
-    print(f"✅ Combined dataset: {stats['real_samples']} real + {stats['synthetic_samples']} synthetic = {stats['total_samples']} total")
+    print(f" Combined dataset: {stats['real_samples']} real + {stats['synthetic_samples']} synthetic = {stats['total_samples']} total")
     
     return stats
 
-# ============================================================================
-# CLI Interface
-# ============================================================================
 
 if __name__ == "__main__":
     import argparse

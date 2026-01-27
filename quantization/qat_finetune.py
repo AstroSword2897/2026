@@ -1,9 +1,3 @@
-"""
-Production-grade Quantization-Aware Training (QAT) for MaxSight models.
-
-Use this when PTQ degrades accuracy >1% on critical heads (embedding, bbox, urgency).
-"""
-
 import torch
 import torch.nn as nn
 import torch.ao.quantization as quantization
@@ -37,14 +31,6 @@ def set_seed(seed: int = 42):
 
 
 def fuse_maxsight_model(model: nn.Module):
-    """
-    Fuse conv+bn+relu patterns for MaxSight CNN architecture.
-    
-    MaxSight uses ResNet50 backbone with FPN, so we fuse:
-    - ResNet layers (conv+bn+relu)
-    - FPN layers (conv+bn+relu)
-    - Detection head layers (conv+bn+relu)
-    """
     patterns = []
     
     # Auto-detect fusion patterns in all modules
@@ -145,7 +131,6 @@ class QATTrainer:
         set_seed(42)
         
     def prepare_model_for_qat(self) -> nn.Module:
-        """Prepare model for QAT by fusing and setting qconfig."""
         model_qat = deepcopy(self.model).to('cpu')
         model_qat.eval()
         

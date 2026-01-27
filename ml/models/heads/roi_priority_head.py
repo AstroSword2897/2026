@@ -1,40 +1,3 @@
-"""
-ROI Priority Head for MaxSight Therapy System
-
-Outputs ROI utility scores for prioritization and attention guidance.
-
-PROJECT PHILOSOPHY & APPROACH:
-This module implements ROI (Region of Interest) prioritization as part of MaxSight's
-therapy system. Prioritizing regions helps users focus on important objects and
-reduces information overload, especially critical for users with CVI or attention
-difficulties.
-
-WHY ROI PRIORITIZATION MATTERS:
-ROI prioritization enables:
-
-1. Attention guidance: Directs user attention to important objects
-2. Information filtering: Reduces cognitive load by prioritizing relevant regions
-3. Therapy task generation: Creates exercises that focus on high-priority regions
-4. Adaptive assistance: Adjusts priority based on user needs and context
-
-HOW IT CONNECTS TO THE PROBLEM STATEMENT:
-The problem emphasizes "Clear Multimodal Communication" and "Environmental Structuring" -
-ROI prioritization ensures users receive information about the most important regions
-first, reducing cognitive overload while maintaining useful environmental awareness.
-
-RELATIONSHIP TO BARRIER REMOVAL METHODS:
-1. ENVIRONMENTAL STRUCTURING: Prioritizes regions for clearer understanding
-2. CLEAR MULTIMODAL COMMUNICATION: Reduces information density while maintaining clarity
-3. SKILL DEVELOPMENT: Helps users learn to identify important regions
-4. ADAPTIVE ASSISTANCE: Adjusts priorities based on user needs and context
-
-TECHNICAL DESIGN DECISIONS:
-- Cross-attention: Enables scene-ROI interaction for context-aware prioritization
-- LayerNorm + Dropout: Better generalization and training stability
-- Pairwise ranking loss: Ensures correct priority ordering
-- ROI masking: Supports variable number of regions per image
-
-"""
 
 import torch
 import torch.nn as nn
@@ -47,6 +10,7 @@ class ROIPriorityHead(nn.Module):
     ROI priority head for therapy tasks and attention guidance.
     
     WHY THIS CLASS EXISTS:
+    ----------------------
     Not all regions in an image are equally important. This head prioritizes regions
     based on scene context and ROI features, enabling the system to:
     - Guide user attention to important objects
@@ -138,7 +102,25 @@ class ROIPriorityHead(nn.Module):
         roi_features: torch.Tensor,
         roi_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-
+        """
+        Forward pass to generate ROI utility scores.
+        
+        CRITICAL INPUT REQUIREMENTS:
+        ----------------------------
+        - scene_embedding: Must be [B, scene_dim] from scene embedding
+        - roi_features: Must be [B, N, roi_dim] where N is number of ROIs
+        - roi_mask: Optional [B, N] boolean mask (True = valid ROI)
+        - All inputs must be on same device and have same batch size
+        
+        Arguments:
+            scene_embedding: Scene embedding [B, scene_dim]
+            roi_features: ROI features [B, N, roi_dim]
+            roi_mask: Optional mask for valid ROIs [B, N] (True = valid, False = invalid)
+        
+        Returns:
+            ROI utility scores [B, N] in [0, 1] range (higher = more important)
+        """
+        # Validate inputs
         if scene_embedding.dim() != 2:
             raise ValueError(f"Expected 2D scene_embedding [B, scene_dim], got {scene_embedding.shape}")
         if roi_features.dim() != 3:
@@ -171,13 +153,14 @@ class ROIPriorityHead(nn.Module):
             # Residual connection with normalization
             roi_features = self.norm1(roi_features + attended_rois)
         
-        # Expand scene embedding to match each ROI
+        # Expand scene embedding to match each ROI (efficient broadcasting)
+        # Use unsqueeze + expand for memory efficiency (no copy until needed)
         scene_expanded = scene_embedding.unsqueeze(1).expand(B, N, -1)  # [B, N, scene_dim]
         
-        # Concatenate scene context with ROI features
+        # Concatenate scene context with ROI features (vectorized)
         combined = torch.cat([scene_expanded, roi_features], dim=2)  # [B, N, scene_dim + roi_dim]
         
-        # Score each ROI
+        # Score each ROI (batched, efficient)
         scores = self.sigmoid(self.scorer(combined)).squeeze(-1)  # [B, N]
         
         # Apply mask if provided (set invalid ROIs to 0)
@@ -198,30 +181,86 @@ class ROIPriorityHead(nn.Module):
         rankings: torch.Tensor,
         margin: float = 0.1
     ) -> torch.Tensor:
+        """
+        Compute pairwise ranking loss with proper tie handling.
+        
+        WHY RANKING LOSS:
+        ----------------
+        ROI prioritization is about relative importance, not absolute scores. Ranking
+        loss ensures that ROIs with higher ground truth rankings get higher predicted
+        scores, which is more appropriate than regression loss for this task.
+        
+        Arguments:
+            scores: Predicted scores [B, N]
+            rankings: Ground truth rankings [B, N] (higher = more important)
+            margin: Margin for ranking loss (default: 0.1)
+        
+        Returns:
+            Ranking loss scalar
+        """
         # Validate inputs
         if scores.shape != rankings.shape:
             raise ValueError(f"Shape mismatch: scores {scores.shape} vs rankings {rankings.shape}")
         
         B, N = scores.shape
         
-        # Create pairwise comparisons
+        if N < 2:
+            # Need at least 2 ROIs for ranking
+            return torch.tensor(0.0, device=scores.device)
+        
+        total_loss = torch.tensor(0.0, device=scores.device)
+        valid_pairs = 0
+        
+        # Process each sample in batch
+        for b in range(B):
+            batch_scores = scores[b]  # [N]
+            batch_rankings = rankings[b]  # [N]
+            
+            # Generate all pairs
+            for i in range(N):
+                for j in range(i + 1, N):
+                    rank_diff = batch_rankings[i] - batch_rankings[j]
+                    score_diff = batch_scores[i] - batch_scores[j]
+                    
+                    # Only consider pairs where rankings differ (exclude ties)
+                    if abs(rank_diff) > 1e-6:  # Not a tie
+                        valid_pairs += 1
+                        
+                        # Expected: sign(score_diff) == sign(rank_diff)
+                        # Loss when order doesn't match
+                        expected_sign = torch.sign(rank_diff)
+                        loss = torch.clamp(margin - score_diff * expected_sign, min=0.0)
+                        
+                        # Weight by rank difference magnitude (larger differences more important)
+                        loss = loss * abs(rank_diff)
+                        total_loss += loss
+        
+        # Average over valid pairs
+        if valid_pairs > 0:
+            return total_loss / valid_pairs
+        else:
+            return torch.tensor(0.0, device=scores.device)
+        
+        # Optimized pairwise comparisons (vectorized)
         # score_diff[i, j] = score[i] - score[j]
         score_diff = scores.unsqueeze(2) - scores.unsqueeze(1)  # [B, N, N]
         # rank_diff[i, j] = rank[i] - rank[j]
         rank_diff = rankings.unsqueeze(2) - rankings.unsqueeze(1)  # [B, N, N]
         
-        # Loss when score order doesn't match rank order
+        # Loss when score order doesn't match rank order (vectorized)
         # Should have score_i > score_j when rank_i > rank_j
         # sign(rank_diff) = +1 if rank_i > rank_j, -1 if rank_i < rank_j
         # We want score_diff * sign(rank_diff) > margin
-        margin_tensor = torch.tensor(margin, device=score_diff.device, dtype=score_diff.dtype)
-        loss = F.relu(margin_tensor - score_diff * torch.sign(rank_diff))
+        loss_matrix = F.relu(margin - score_diff * torch.sign(rank_diff))
         
-        # Only consider valid pairs (where rankings differ)
+        # Only consider valid pairs (where rankings differ) - efficient masking
         valid_pairs = (rank_diff != 0).float()
-        if valid_pairs.sum() > 0:
-            loss = (loss * valid_pairs).sum() / valid_pairs.sum()
+        valid_count = valid_pairs.sum()
+        
+        if valid_count > 0:
+            # Efficient: sum only valid pairs, divide by count
+            loss = (loss_matrix * valid_pairs).sum() / valid_count
         else:
-            loss = torch.tensor(0.0, device=scores.device)
+            loss = torch.tensor(0.0, device=scores.device, dtype=scores.dtype)
         
         return loss

@@ -15,6 +15,8 @@ from PIL import Image
 import math
 from functools import lru_cache
 
+
+
 # Cached transformation matrices for RGB↔XYZ conversions (3-5x speedup)
 # Use device.type (not str(device)) to avoid cache misses with different CUDA device IDs
 @lru_cache(maxsize=4)
@@ -90,12 +92,12 @@ def rgb_to_lab_tensor(rgb: torch.Tensor, eps: float = EPS_LAB) -> torch.Tensor:
     if rgb.dim() == 3:  # [C, H, W]
         xyz = torch.einsum('ij,jhw->ihw', transform, rgb_linear)
         # Normalize by D65 white point for 3D tensor (white_point never zero, no eps needed)
-        white_point = white_point.view(3, 1, 1)
+        white_point = white_point.reshape(3, 1, 1)
         xyz = xyz / white_point
     else:  # [B, C, H, W]
         xyz = torch.einsum('ij,bjhw->bihw', transform, rgb_linear)
         # Normalize by D65 white point for 4D tensor (white_point never zero, no eps needed)
-        white_point = white_point.view(1, 3, 1, 1)
+        white_point = white_point.reshape(1, 3, 1, 1)
         xyz = xyz / white_point
     
     # XYZ to LAB (with numerical stability)
@@ -127,6 +129,7 @@ def rgb_to_lab_tensor(rgb: torch.Tensor, eps: float = EPS_LAB) -> torch.Tensor:
         return torch.stack([L, a, b], dim=0)
     else:
         return torch.stack([L, a, b], dim=1)
+
 
 def lab_to_rgb_tensor(lab: torch.Tensor, eps: float = EPS_LAB) -> torch.Tensor:
     """
@@ -195,6 +198,7 @@ def lab_to_rgb_tensor(lab: torch.Tensor, eps: float = EPS_LAB) -> torch.Tensor:
     
     return torch.clamp(rgb, 0.0, 1.0)
 
+
 def apply_clahe_tensor_fast(
     image: torch.Tensor,
     clip_limit: float = 2.0
@@ -232,6 +236,7 @@ def apply_clahe_tensor_fast(
     if squeeze:
         enhanced = enhanced.squeeze(0)
     return enhanced
+
 
 def apply_clahe_tensor(
     image: torch.Tensor,
@@ -333,6 +338,7 @@ def apply_clahe_tensor(
         enhanced = enhanced.squeeze(0)
     
     return enhanced
+
 
 # ============================================================================
 # Image Preprocessing Class (Meta AI-style: Tensor-first, GPU-friendly)
@@ -898,6 +904,7 @@ class ImagePreprocessor:
         
         return TF.to_pil_image(enhanced)
 
+
 class AudioPreprocessor:
     """Audio preprocessing - MFCC feature extraction"""
     
@@ -922,6 +929,7 @@ class AudioPreprocessor:
         else:
             batch_size = audio.shape[0]
             return torch.randn(batch_size, self.n_mfcc)
+
 
 class DistanceEstimator:
     """
@@ -1160,6 +1168,7 @@ class DistanceEstimator:
             'confidence': confidence
         }
 
+
 class TextRegionDetector:
     """Text region detection preprocessing for OCR integration. Uses model's text_head output."""
     
@@ -1263,6 +1272,7 @@ class TextRegionDetector:
         # In production, use model's text_head output instead
         return []
 
+
 # Synthetic Impairment Functions
 def apply_refractive_error_blur(image: torch.Tensor, sigma: float = 3.0) -> torch.Tensor:
     """Apply Gaussian blur for refractive errors"""
@@ -1271,9 +1281,11 @@ def apply_refractive_error_blur(image: torch.Tensor, sigma: float = 3.0) -> torc
         kernel_size += 1
     return TF.gaussian_blur(image, kernel_size=[kernel_size, kernel_size], sigma=[sigma, sigma])
 
+
 def apply_cataract_contrast(image: torch.Tensor, contrast_factor: float = 0.5) -> torch.Tensor:
     """Reduce contrast for cataracts simulation"""
     return TF.adjust_contrast(image, contrast_factor)
+
 
 def apply_glaucoma_vignette(image: torch.Tensor, center_percent: float = 0.4) -> torch.Tensor:
     """Apply peripheral masking for glaucoma"""
@@ -1299,6 +1311,7 @@ def apply_glaucoma_vignette(image: torch.Tensor, center_percent: float = 0.4) ->
     
     return image * mask
 
+
 def apply_amd_central_darkening(image: torch.Tensor, darken_factor: float = 0.3) -> torch.Tensor:
     """Darken center region for AMD simulation"""
     h, w = image.shape[-2:]
@@ -1323,9 +1336,11 @@ def apply_amd_central_darkening(image: torch.Tensor, darken_factor: float = 0.3)
     
     return image * mask
 
+
 def apply_low_light(image: torch.Tensor, brightness_factor: float = 0.3) -> torch.Tensor:
     """Reduce brightness for retinitis pigmentosa"""
     return image * brightness_factor
+
 
 def apply_color_shift(image: torch.Tensor, shift_type: str = 'red_green') -> torch.Tensor:
     """
@@ -1414,6 +1429,7 @@ def apply_color_shift(image: torch.Tensor, shift_type: str = 'red_green') -> tor
     result = torch.clamp(result, 0.0, 1.0)
     return result.squeeze(0) if not is_batch else result
 
+
 def apply_batch_transforms(
     images: List[torch.Tensor],
     transform_fn: Callable[..., torch.Tensor],
@@ -1454,6 +1470,7 @@ def apply_batch_transforms(
     
     return transformed
 
+
 if __name__ == "__main__":
     print("Preprocessing pipeline created successfully!")
     print("\nAvailable components:")
@@ -1474,4 +1491,3 @@ if __name__ == "__main__":
     print("- Cached transformation matrices (3-5x speedup for RGB↔LAB)")
     print("- Optimized CLAHE with fast approximation")
     print("- Numerical stability improvements (eps, clamping)")
-
