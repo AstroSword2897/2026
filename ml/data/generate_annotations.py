@@ -1,255 +1,208 @@
-"""Dataset download helpers for COCO, Open Images, Objects365, Visual Genome, LVIS, AudioSet."""
+# Generate MaxSight annotations from COCO: map categories, assign urgency, estimate distance.
 
-import os
-import requests
-import zipfile
+import json
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List, Tuple, Any
+import random
+from collections import defaultdict
 
-from ml.models.maxsight_cnn import COCO_CLASSES
-ENVIRONMENTAL_CLASSES = COCO_CLASSES
-
-# 15 Environmental Sound Classes
-SOUND_CLASSES = [
-    'fire alarm', 'smoke detector', 'doorbell',
-    'siren', 'car horn', 'breaking glass',
-    'footsteps', 'door closing', 'water running',
-    'human voice', 'dog bark', 'cat meow',
-    'phone ringing', 'alarm clock', 'vehicle engine'
-]
+from ml.models.maxsight_cnn import COCO_CLASSES, COCO_BASE_CLASSES
 
 
-def download_coco_dataset(data_dir: Path = Path("datasets/coco")):
-    """
-    Download COCO dataset
+def map_coco_to_environmental(coco_category_name: str) -> str:
+    normalized = coco_category_name.lower().strip()
     
-    Note: COCO dataset is large (~20GB). This script provides instructions.
-    For actual download, use official COCO API or manual download.
-    """
-    print("COCO Dataset Download Instructions:")
-    print("1. Visit: https://cocodataset.org/#download")
-    print("2. Download: 2017 Train images (18GB)")
-    print("3. Download: 2017 Val images (1GB)")
-    print("4. Download: 2017 Train/Val annotations (241MB)")
-    print("5. Extract to: datasets/coco/")
-    print("\nOr use COCO API:")
-    print("  from pycocotools.coco import COCO")
-    print("  coco = COCO('annotations/instances_train2017.json')")
+    # Find exact match in comprehensive class list
+    for cls in COCO_CLASSES:
+        if cls.lower() == normalized:
+            return cls
     
-    data_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\nDataset directory created: {data_dir}")
+    # Fallback if no match found
+    return COCO_CLASSES[0] if COCO_CLASSES else 'person'
 
 
-def download_open_images(data_dir: Path = Path("datasets/open_images")):
-    """Download Open Images V7 dataset (9M+ images, 36M+ instances)."""
-    print("Open Images V7 Dataset Download Instructions:")
-    print("1. Visit: https://storage.googleapis.com/openimages/web/index.html")
-    print("2. Download: Open Images V7 Train (9M images, ~500GB)")
-    print("3. Download: Open Images V7 Validation (41K images, ~2GB)")
-    print("4. Download: Open Images V7 Test (125K images, ~6GB)")
-    print("5. Download: Bounding box annotations (CSV format)")
-    print("6. Extract to: datasets/open_images/")
-    print("\nOr use Kaggle API:")
-    print("  kaggle datasets download -d googleai/open-images-v7")
+def assign_urgency_score(category_name: str, box_size: float) -> int:
+    category_lower = category_name.lower()
     
-    data_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\nDataset directory created: {data_dir}")
-    print("Note: Open Images provides 9M+ images for maximum training data")
-
-
-def download_objects365(data_dir: Path = Path("datasets/objects365")):
-    """Download Objects365 dataset (2M+ images, 30M+ instances)."""
-    print("Objects365 Dataset Download Instructions:")
-    print("1. Visit: https://www.objects365.org/download.html")
-    print("2. Register and request access")
-    print("3. Download: Objects365 V2 Train (2M images, ~500GB)")
-    print("4. Download: Objects365 V2 Val (80K images, ~20GB)")
-    print("5. Download: Annotations (JSON format)")
-    print("6. Extract to: datasets/objects365/")
+    danger_keywords = ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle',
+                      'fire', 'hazard', 'stop', 'traffic', 'train']
+    warning_keywords = ['person', 'dog', 'cat', 'horse', 'bird']
     
-    data_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\nDataset directory created: {data_dir}")
-    print("Note: Objects365 provides 2M+ images, 30M+ instances")
+    if any(kw in category_lower for kw in danger_keywords):
+        if box_size > 0.1:
+            return 3  # Danger
+        else:
+            return 2  # Warning
+    elif any(kw in category_lower for kw in warning_keywords):
+        if box_size > 0.15:
+            return 2  # Warning
+        else:
+            return 1  # Caution - moving object farther away
+    else:
+        return 0  # Safe - no immediate threat
 
 
-def download_visual_genome(data_dir: Path = Path("datasets/visual_genome")):
-    """Download Visual Genome dataset (108K images, 3.8M+ instances)."""
-    print("Visual Genome Dataset Download Instructions:")
-    print("1. Visit: https://visualgenome.org/api/v0/api_home.html")
-    print("2. Download: Visual Genome 1.4 images (108K images, ~20GB)")
-    print("3. Download: Scene graphs and annotations (JSON)")
-    print("4. Extract to: datasets/visual_genome/")
+def estimate_distance_zone(box_size: float, image_size: Tuple[int, int] = (224, 224)) -> int:
+    # Distance estimation based on normalized box area (larger boxes = closer objects)
+    # Purpose: Estimate distance zone from bounding box size using heuristic: larger boxes indicate
+    #          objects closer to camera, smaller boxes indicate objects farther away. This is a
+    #          simple but effective heuristic for accessibility applications where precise distance
+    #          isn't critical, but relative proximity is important for navigation guidance.
+    # Complexity: O(1) - three simple comparisons (if/elif/else)
+    # Relationship: Core distance estimation logic - used during annotation generation to assign
+    #              distance zones (0=near, 1=medium, 2=far) to objects for spatial awareness features
+    if box_size > 0.1:
+        # Purpose: Identify objects very close to camera - these require immediate attention
+        return 0  # Near
+    elif box_size > 0.05:
+        return 1  # Medium
+    else:
+        return 2  # Far
+
+
+def generate_scene_description(objects: List[Dict]) -> str:
+    # Generate simple scene description from detected objects.
+    if not objects:
+        return "Empty scene"
     
-    data_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\nDataset directory created: {data_dir}")
-    print("Note: Visual Genome provides rich scene understanding data")
+    categories = [obj.get('category', 'object') for obj in objects[:5]]
+    unique_categories = list(set(categories))
+    if len(unique_categories) == 1:
+        return f"Scene with {unique_categories[0]}"
+    elif len(unique_categories) <= 3:
+        return f"Scene with {', '.join(unique_categories)}"
+    else:
+        return f"Scene with {len(unique_categories)} different objects"
 
 
-def download_lvis(data_dir: Path = Path("datasets/lvis")):
-    """
-    Download LVIS dataset - 164K images, 2.2M+ instances, 1203 classes
+def generate_annotations_from_coco(
+    coco_annotation_file: Path,
+    image_dir: Path,
+    output_file: Path,
+    num_samples: int = 6000,
+    train_split: float = 0.83  # 5000/6000 = 0.83
+) -> Tuple[Path, Path]:
+    print(f"Loading COCO annotations from {coco_annotation_file}...")
     
-    Long-tail distribution dataset - good for rare object detection
-    """
-    print("LVIS Dataset Download Instructions:")
-    print("1. Visit: https://www.lvisdataset.org/dataset")
-    print("2. Download: LVIS V1.0 Train (100K images, ~20GB)")
-    print("3. Download: LVIS V1.0 Val (20K images, ~4GB)")
-    print("4. Download: LVIS V1.0 Test (44K images, ~9GB)")
-    print("5. Download: Annotations (JSON format)")
-    print("6. Extract to: datasets/lvis/")
+    with open(coco_annotation_file, 'r') as f:
+        coco_data = json.load(f)
     
-    data_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\nDataset directory created: {data_dir}")
-    print("Note: LVIS provides long-tail distribution for rare objects")
-
-
-def download_audioset(data_dir: Path = Path("datasets/audioset")):
-    """
-    Download AudioSet dataset - 2M+ audio clips, 632 classes
+    image_map = {img['id']: img for img in coco_data['images']}
+    category_map = {cat['id']: cat['name'] for cat in coco_data.get('categories', [])}
     
-    Large-scale audio dataset for audio-visual fusion
-    """
-    print("AudioSet Dataset Download Instructions:")
-    print("1. Visit: https://research.google.com/audioset/")
-    print("2. Request access to AudioSet")
-    print("3. Download: Balanced train/val/eval sets (2M+ clips, ~1TB)")
-    print("4. Extract to: datasets/audioset/")
+    image_annotations = defaultdict(list)
+    for ann in coco_data['annotations']:
+        image_annotations[ann['image_id']].append(ann)
     
-    data_dir.mkdir(parents=True, exist_ok=True)
-    print(f"\nDataset directory created: {data_dir}")
-    print("Note: AudioSet provides 2M+ audio clips for audio-visual fusion")
-
-
-def create_synthetic_impairments():
-    """
-    Create functions for synthetic impairment simulations
-    These will be applied during training data loading
-    """
-    print("\nSynthetic Impairment Functions:")
-    print("These will be implemented in preprocessing pipeline")
-    print("- Blur (refractive errors): Gaussian blur σ=2-5")
-    print("- Contrast reduction (cataracts): 0.3-0.7")
-    print("- Peripheral masking (glaucoma): Vignette")
-    print("- Central darkening (AMD): Center region darkening")
-    print("- Low-light (retinitis pigmentosa): Brightness reduction")
-    print("- Color shifts (color blindness): Color channel manipulation")
-
-
-def save_class_mappings(data_dir: Path = Path("datasets")):
-    """Save class mappings to files"""
-    data_dir.mkdir(parents=True, exist_ok=True)
+    maxsight_annotations = []
+    image_ids = list(image_annotations.keys())
     
-    # Save environmental classes
-    with open(data_dir / "environmental_classes.txt", "w") as f:
-        for i, cls in enumerate(ENVIRONMENTAL_CLASSES):
-            f.write(f"{i}: {cls}\n")
+    if len(image_ids) > num_samples:
+        image_ids = random.sample(image_ids, num_samples)
     
-    # Save sound classes
-    with open(data_dir / "sound_classes.txt", "w") as f:
-        for i, cls in enumerate(SOUND_CLASSES):
-            f.write(f"{i}: {cls}\n")
+    print(f"Processing {len(image_ids)} images...")
     
-    print(f"\nClass mappings saved to {data_dir}/")
-
-
-def get_all_datasets_info() -> Dict[str, Dict]:
-    """Get information about all supported datasets"""
-    return {
-        'coco': {
-            'name': 'COCO 2017',
-            'images': '200K+',
-            'instances': '1.5M+',
-            'classes': '80',
-            'size': '~25GB',
-            'url': 'https://cocodataset.org/'
-        },
-        'open_images': {
-            'name': 'Open Images V7',
-            'images': '9M+',
-            'instances': '36M+',
-            'classes': '600',
-            'size': '~500GB',
-            'url': 'https://storage.googleapis.com/openimages/web/index.html'
-        },
-        'objects365': {
-            'name': 'Objects365 V2',
-            'images': '2M+',
-            'instances': '30M+',
-            'classes': '365',
-            'size': '~500GB',
-            'url': 'https://www.objects365.org/'
-        },
-        'visual_genome': {
-            'name': 'Visual Genome',
-            'images': '108K',
-            'instances': '3.8M+',
-            'classes': '80K+',
-            'size': '~20GB',
-            'url': 'https://visualgenome.org/'
-        },
-        'lvis': {
-            'name': 'LVIS V1.0',
-            'images': '164K',
-            'instances': '2.2M+',
-            'classes': '1203',
-            'size': '~35GB',
-            'url': 'https://www.lvisdataset.org/'
-        },
-        'audioset': {
-            'name': 'AudioSet',
-            'clips': '2M+',
-            'classes': '632',
-            'size': '~1TB',
-            'url': 'https://research.google.com/audioset/'
+    for image_id in image_ids:
+        img_info = image_map[image_id]
+        anns = image_annotations[image_id]
+        
+        objects = []
+        scene_urgency = 0
+        
+        for ann in anns:
+            category_id = ann['category_id']
+            category_name = category_map.get(category_id, 'unknown')
+            env_category = map_coco_to_environmental(category_name)
+            
+            bbox = ann['bbox']  # [x, y, w, h] in pixels
+            img_width = img_info.get('width', 224)
+            img_height = img_info.get('height', 224)
+            
+            # Convert to center format and normalize
+            cx = (bbox[0] + bbox[2] / 2) / img_width
+            cy = (bbox[1] + bbox[3] / 2) / img_height
+            w = bbox[2] / img_width
+            h = bbox[3] / img_height
+            box_size = w * h
+            
+            urgency = assign_urgency_score(env_category, box_size)
+            distance_zone = estimate_distance_zone(box_size)
+            scene_urgency = max(scene_urgency, urgency)
+            
+            objects.append({
+                'box': [cx, cy, w, h],  # Center format, normalized
+                'category': env_category,
+                'urgency': urgency,
+                'distance': distance_zone
+            })
+        
+        # Generate scene description
+        scene_desc = generate_scene_description(objects)
+        
+        # Create MaxSight annotation
+        maxsight_ann = {
+            'image_id': image_id,
+            'image_path': img_info.get('file_name', f'{image_id}.jpg'),
+            'objects': objects,
+            'urgency': scene_urgency,
+            'lighting': 'normal',  # Will be detected during training
+            'description': scene_desc,
+            'audio_path': None  # No audio in COCO
         }
-    }
+        
+        maxsight_annotations.append(maxsight_ann)
+    
+    random.shuffle(maxsight_annotations)
+    split_idx = int(len(maxsight_annotations) * train_split)
+    train_annotations = maxsight_annotations[:split_idx]
+    val_annotations = maxsight_annotations[split_idx:]
+    
+    train_file = output_file.parent / f'{output_file.stem}_train.json'
+    val_file = output_file.parent / f'{output_file.stem}_val.json'
+    
+    with open(train_file, 'w') as f:
+        json.dump(train_annotations, f, indent=2)
+    
+    with open(val_file, 'w') as f:
+        json.dump(val_annotations, f, indent=2)
+    
+    print(f"Generated {len(train_annotations)} training annotations")
+    print(f"Generated {len(val_annotations)} validation annotations")
+    print(f"Saved to {train_file} and {val_file}")
+    
+    return train_file, val_file
 
 
 if __name__ == "__main__":
-    print("MaxSight Comprehensive Dataset Acquisition")
-    print("Maximum Data for 347-Class Training")
+    import argparse
     
-    # Create dataset directories
-    datasets_dir = Path("datasets")
-    datasets_dir.mkdir(exist_ok=True)
+    parser = argparse.ArgumentParser(description='Generate MaxSight annotations from COCO dataset')
+    parser.add_argument('--coco_annotations', type=Path, required=True,
+                      help='Path to COCO annotation JSON file')
+    parser.add_argument('--image_dir', type=Path, required=True,
+                      help='Directory containing COCO images')
+    parser.add_argument('--output', type=Path, default=Path('annotations/maxsight_annotations.json'),
+                      help='Output annotation file path (will create train/val versions)')
+    parser.add_argument('--num_samples', type=int, default=6000,
+                      help='Total number of samples to generate (default: 6000)')
+    parser.add_argument('--train_split', type=float, default=0.83,
+                      help='Fraction of samples for training (default: 0.83 for 5000/1000 split)')
     
-    # Show all available datasets
-    print("\nAvailable Datasets for Maximum Training Data:")
-    datasets_info = get_all_datasets_info()
-    for key, info in datasets_info.items():
-        print(f"\n{info['name']}:")
-        if 'images' in info:
-            print(f"  Images: {info['images']}")
-            print(f"  Instances: {info['instances']}")
-        if 'clips' in info:
-            print(f"  Audio Clips: {info['clips']}")
-        print(f"  Classes: {info['classes']}")
-        print(f"  Size: {info['size']}")
-        print(f"  URL: {info['url']}")
+    args = parser.parse_args()
     
-    # Download instructions for all datasets
-    print("Dataset Download Instructions:")
+    # Create output directory
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     
-    download_coco_dataset()
-    download_open_images()
-    download_objects365()
-    download_visual_genome()
-    download_lvis()
-    download_audioset()
+    # Generate annotations
+    train_file, val_file = generate_annotations_from_coco(
+        coco_annotation_file=args.coco_annotations,
+        image_dir=args.image_dir,
+        output_file=args.output,
+        num_samples=args.num_samples,
+        train_split=args.train_split
+    )
     
-    # Create synthetic impairment info
-    create_synthetic_impairments()
-    
-    # Save class mappings
-    save_class_mappings()
-    
-    print("Total Available Training Data:")
-    print("  - COCO: 200K+ images, 1.5M+ instances")
-    print("  - Open Images: 9M+ images, 36M+ instances")
-    print("  - Objects365: 2M+ images, 30M+ instances")
-    print("  - Visual Genome: 108K images, 3.8M+ instances")
-    print("  - LVIS: 164K images, 2.2M+ instances")
-    print("  - AudioSet: 2M+ audio clips")
-    print("\n  TOTAL: 11M+ images, 70M+ instances for maximum training data")
+    print("\nAnnotation generation complete!")
+    print(f"Training annotations: {train_file}")
+    print(f"Validation annotations: {val_file}")
 

@@ -36,7 +36,6 @@ class DatasetImageTester:
     """
     
     def __init__(self, device: Optional[str] = None):
-        """Initialize the tester with all MaxSight components."""
         print("Initializing Dataset Image Tester")
         
         # Device setup
@@ -76,7 +75,7 @@ class DatasetImageTester:
         # Test results
         self.test_results = []
         
-        print(" Tester initialized!\n")
+        print("✅ Tester initialized!\n")
     
     def find_dataset_images(
         self,
@@ -98,7 +97,7 @@ class DatasetImageTester:
         
         for dataset_dir in dataset_dirs:
             if not dataset_dir.exists():
-                print(f"  Dataset directory not found: {dataset_dir}")
+                print(f"⚠️  Dataset directory not found: {dataset_dir}")
                 continue
             
             # Search for images
@@ -119,7 +118,7 @@ class DatasetImageTester:
         
         # Remove duplicates and limit
         image_paths = list(set(image_paths))[:max_images]
-        print(f"\n Found {len(image_paths)} unique images to test\n")
+        print(f"\n✅ Found {len(image_paths)} unique images to test\n")
         
         return image_paths
     
@@ -328,6 +327,16 @@ class DatasetImageTester:
         image_paths: List[Path],
         conditions: Optional[List[str]] = None
     ) -> Dict[str, Any]:
+        """
+        Run tests on multiple images.
+        
+        Arguments:
+            image_paths: List of image paths to test
+            conditions: Optional list of visual conditions to test
+        
+        Returns:
+            Test summary dictionary
+        """
         # Convert conditions to List[Optional[str]]
         if conditions is not None:
             test_conditions: List[Optional[str]] = list(conditions)  # List[str] -> List[Optional[str]]
@@ -353,9 +362,9 @@ class DatasetImageTester:
                 all_results.append(result)
                 
                 if result['success']:
-                    print(f" ({result['processing_time_ms']:.1f}ms, {result['num_detections']} detections)")
+                    print(f"✅ ({result['processing_time_ms']:.1f}ms, {result['num_detections']} detections)")
                 else:
-                    print(f" Error: {result.get('error', 'Unknown')}")
+                    print(f"❌ Error: {result.get('error', 'Unknown')}")
         
         # Calculate statistics
         successful = [r for r in all_results if r['success']]
@@ -408,7 +417,7 @@ class DatasetImageTester:
         with open(output_file, 'w') as f:
             json.dump(summary_to_save, f, indent=2)
         
-        print(f"\n Results saved to: {output_file}")
+        print(f"\n✅ Results saved to: {output_file}")
 
 
 def create_test_images(output_dir: Path, num_images: int = 10) -> List[Path]:
@@ -456,7 +465,6 @@ def main():
     
     # If no dataset images found, create synthetic test images
     if not image_paths:
-        print("  No images found in dataset directories.")
         print("Creating synthetic test images for testing...\n")
         test_images_dir = project_root / 'test_images'
         image_paths = create_test_images(test_images_dir, num_images=20)

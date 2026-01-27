@@ -7,6 +7,7 @@ Tiny CNN for eye tracking and fatigue detection:
 - Pupil-size proxy
 
 PROJECT PHILOSOPHY & APPROACH:
+=============================
 This module implements eye/face tracking for fatigue detection and gaze analysis. It's a critical
 component for understanding user state and adapting assistance levels accordingly.
 
@@ -30,6 +31,8 @@ TECHNICAL DESIGN DECISIONS:
 - Dropout in FC heads: Prevents degenerate outputs with small batches
 - Proper initialization: Ensures meaningful outputs from the start
 
+Phase 1: Core ML Backbone & Preprocessing
+See docs/therapy_system_implementation_plan.md for implementation details.
 """
 
 import torch
@@ -44,6 +47,7 @@ class EyeImagePreprocessor:
     """
     Preprocessor for eye/face images before feeding to EyeModel.
     
+    WHY THIS CLASS EXISTS:
     Eye model requires specific preprocessing:
     1. Normalize to [0,1] range - ensures conv layers receive meaningful activations
     2. Resize/crop to [64, 64] - model expects fixed input size
@@ -107,7 +111,12 @@ class EyeImagePreprocessor:
             Preprocessed tensor [3, 64, 64] in [0,1] range
         """
         result = self.transform(image)
-        assert isinstance(result, torch.Tensor), "Transform must return Tensor"
+        # Ensure result is a tensor (transform should return tensor due to ToTensor())
+        if not isinstance(result, torch.Tensor):
+            # Fallback: convert manually if transform didn't work
+            import torchvision.transforms.functional as TF
+            result = TF.to_tensor(image)
+            result = TF.resize(result.unsqueeze(0), list(self.target_size)).squeeze(0)  # Convert tuple to list
         return result
     
     def preprocess_tensor(
@@ -147,7 +156,7 @@ class EyeImagePreprocessor:
         if tensor.shape[2:] != self.target_size:
             tensor = F.interpolate(
                 tensor,
-                size=self.target_size,
+                size=list(self.target_size),  # Convert tuple to list for type checker
                 mode='bilinear',
                 align_corners=False
             )
@@ -172,6 +181,12 @@ class EyeModel(nn.Module):
     This model provides eye tracking capabilities for understanding user state (fatigue, attention,
     cognitive load). This information enables adaptive assistance - the system can adjust
     verbosity, frequency, and detail levels based on user state.
+    
+    Architecture:
+    Conv -> ReLU -> Conv -> ReLU -> FC -> outputs:
+    - Blink probability (0–1)
+    - Fixation vs saccade pattern (softmax over 2 classes)
+    - Pupil-size proxy (0–1)
     
     Input: [B, 3, 64, 64] - Face/eye region (64x64 for speed)
     Output: Dict with blink_prob, fixation_pattern, pupil_size

@@ -1,11 +1,4 @@
-"""
-Simulation Harness
-
-End-to-end simulation for testing therapy system.
-
-Phase 5: End-to-End Integration
-See docs/therapy_system_implementation_plan.md for implementation details.
-"""
+# Simulation Harness
 
 from typing import Dict, List, Optional, Any
 import numpy as np

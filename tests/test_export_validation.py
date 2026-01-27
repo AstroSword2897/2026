@@ -96,9 +96,9 @@ def test_coreml_export():
                 assert saved_path.exists() or Path(str(export_path) + ".mlpackage").exists(), "CoreML export not created"
                 print("  PASSED: CoreML export works correctly")
             else:
-                print("  ⚠️ SKIPPED: CoreML export not available")
+                print("   SKIPPED: CoreML export not available")
         except Exception as e:
-            print(f"  ⚠️ SKIPPED: CoreML export failed (expected if not installed): {e}")
+            print(f"   SKIPPED: CoreML export failed (expected if not installed): {e}")
 
 
 def test_onnx_export():

@@ -1,3 +1,22 @@
+"""
+MaxSight Web-Based Product Simulator
+Complete end-to-end simulation of the MaxSight product on a local web server.
+
+This simulator integrates ALL components:
+- Model inference (MaxSightCNN)
+- Preprocessing (condition-specific)
+- OCR integration
+- Output scheduling
+- Therapy system
+- Description generation
+- Spatial memory
+- Path planning
+- Voice feedback
+- Haptic feedback
+- Visual overlays
+- Session management
+"""
+
 import torch
 import numpy as np
 from pathlib import Path
@@ -13,8 +32,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Flask for web server
-from flask import Flask, render_template, request, jsonify, send_from_directory  # type: ignore
-from flask_cors import CORS  # type: ignore
+from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_cors import CORS
 
 # Import ALL MaxSight components
 from ml.models.maxsight_cnn import create_model
@@ -94,7 +113,6 @@ class MaxSightSimulator:
             'total_inference_time': 0.0
         }
         
-        print(" Simulator initialized!")
     
     def set_user_condition(self, condition: str):
         """Set user's visual condition."""
@@ -324,6 +342,8 @@ def init_simulator():
     global simulator
     if simulator is None:
         simulator = MaxSightSimulator()
+    return simulator
+
 
 
 @app.route('/')
@@ -493,4 +513,3 @@ if __name__ == '__main__':
     print("\nPress Ctrl+C to stop\n")
     
     app.run(host='0.0.0.0', port=5001, debug=True)
-
