@@ -1,42 +1,42 @@
 # Test Execution Status Report
 
-**Generated:** 2025-12-06 18:58:09
+**Generated:** 2026-01-31 19:57:22
 
 ## Summary
 
-### Overall Status: GREEN
-- **Total Tests:** 27
-- **Passed:** 27
+### Overall Status: RED
+- **Total Tests:** 0
+- **Passed:** 0
 - **Failed:** 0
 - **Skipped:** 0
-- **Execution Time:** 31.03s
+- **Execution Time:** 0.99s
 
 ## Test Suite Results
 
 ### tests/test_model.py
-**Status:** GREEN
-- Passed: 7
+**Status:** RED
+- Passed: 0
 - Failed: 0
 - Skipped: 0
-- Time: 5.02s
+- Time: 6.27s
 
 ### tests/test_comprehensive_system.py
-**Status:** GREEN
-- Passed: 7
+**Status:** RED
+- Passed: 0
 - Failed: 0
 - Skipped: 0
-- Time: 8.51s
+- Time: 0.48s
 
 ### tests/test_condition_specific.py
-**Status:** GREEN
-- Passed: 3
+**Status:** RED
+- Passed: 0
 - Failed: 0
 - Skipped: 0
-- Time: 7.77s
+- Time: 0.50s
 
 ### tests/test_export_validation.py
-**Status:** GREEN
-- Passed: 6
+**Status:** RED
+- Passed: 0
 - Failed: 0
 - Skipped: 0
-- Time: 13.72s
+- Time: 0.53s
