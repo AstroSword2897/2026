@@ -1,0 +1,108 @@
+# MaxSight Training Configuration: T5_TEMPORAL (2-Phase Loss Scaling)
+# Temporal modeling (video), All features enabled
+# Target: Cloud GPU training, ~320M parameters
+# 
+# SAFER FALLBACK: 2-phase loss scaling to prevent early training collapse
+# Phase 1 (epochs 0-40): Core tasks only
+# Phase 2 (epochs 40+): All tasks enabled, GradNorm rebalances
+
+# Model Configuration
+model:
+  tier: "T5_TEMPORAL"
+  num_classes: 80
+  use_se_attention: true
+  use_cbam_attention: true
+  use_hybrid_backbone: true
+  use_dynamic_conv: true
+  use_cross_task_attention: true
+  use_cross_modal_attention: true
+  use_temporal_modeling: true
+  use_retrieval: true
+
+# Data Configuration
+data:
+  train_annotation_file: "datasets/cleaned_splits/train.json"
+  val_annotation_file: "datasets/cleaned_splits/val.json"
+  test_annotation_file: "datasets/cleaned_splits/test.json"
+  image_dir: "datasets/coco_raw"
+  audio_dir: null
+  batch_size: 4
+  num_workers: 8
+  pin_memory: true
+  max_objects: 10
+  condition_mode: null
+  apply_lighting_augmentation: true
+  use_weighted_sampling: false
+
+# Training Configuration
+training:
+  num_epochs: 150
+  learning_rate: 7.5e-5
+  weight_decay: 0.05
+  optimizer: "AdamW"
+  scheduler: "cosine"
+  min_lr: 1e-6
+  warmup_epochs: 20
+  gradient_clip_norm: 1.0
+  mixed_precision: false  # FP32 only
+  accumulate_grad_batches: 8  # Effective batch size 32
+
+# Loss Configuration - 2-Phase Approach
+# Phase 1 (epochs 0-40): Core detection tasks only
+# Phase 2 (epochs 40+): All tasks enabled
+loss:
+  use_gradnorm: true
+  phase_1_epochs: 40  # Disable semantic tasks for first 40 epochs
+  phase_1_loss_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    therapy_state: 0.8
+    # Disabled in phase 1:
+    # roi_priority, navigation_difficulty, scene_description, ocr,
+    # scene_graph, sound_events, personalization, predictive_alerts
+  phase_2_loss_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    therapy_state: 0.8
+    roi_priority: 0.4
+    navigation_difficulty: 0.5
+    scene_description: 0.3
+    ocr: 0.4
+    scene_graph: 0.3
+    sound_events: 0.4
+    personalization: 0.3
+    predictive_alerts: 0.6
+
+# Validation Configuration
+validation:
+  val_check_interval: 0.5
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+  # Note: Ignore validation loss for first 25 epochs
+  # Watch loss smoothness, not absolute value - temporal models lie early
+
+# Checkpointing
+checkpoint:
+  save_dir: "checkpoints/t5_temporal_2phase"
+  save_last: true
+  save_every_n_epochs: 10
+
+# Logging
+logging:
+  log_dir: "logs/t5_temporal_2phase"
+  log_every_n_steps: 50
+  tensorboard: true
+
+# Device
+device: "auto"
+seed: 42
+
