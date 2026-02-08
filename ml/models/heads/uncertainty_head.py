@@ -1,51 +1,67 @@
-"""
-Confidence/Uncertainty Head
-
-Phase 2: Therapy Heads
-See docs/therapy_system_implementation_plan.md for implementation details.
-"""
+"""Global Confidence Aggregator for MaxSight 3.0 (v2)"""
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from typing import Dict
+from typing import Dict, Optional
 
 
-class UncertaintyHead(nn.Module):
+class GlobalConfidenceAggregator(nn.Module):
+    """Global Confidence Aggregator (v2)."""
     
-    def __init__(self, scene_dim: int = 256, hidden_dim: int = 128, dropout: float = 0.1):
+    def __init__(
+        self,
+        scene_dim: int = 256,
+        hidden_dim: int = 128,
+        dropout: float = 0.1,
+    ):
         super().__init__()
-        self.scene_dim = scene_dim
         
-        # Uncertainty estimation network (with LayerNorm and dropout for efficiency)
-        self.fc1 = nn.Linear(scene_dim, hidden_dim)
-        self.norm1 = nn.LayerNorm(hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
-        self.norm2 = nn.LayerNorm(hidden_dim // 2)
-        self.fc3 = nn.Linear(hidden_dim // 2, 1)
-        self.relu = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(dropout)
-        self.sigmoid = nn.Sigmoid()
+        self.backbone = nn.Sequential(
+            nn.Linear(scene_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.LayerNorm(hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+        
+        # Logit space (NOT sigmoid yet)
+        self.confidence_logit = nn.Linear(hidden_dim // 2, 1)
     
-    def forward(self, scene_embedding: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """
-        Forward pass.
+    def forward(
+        self,
+        scene_embedding: torch.Tensor,
+        motion_residual: Optional[torch.Tensor] = None,
+        ocr_entropy: Optional[torch.Tensor] = None,
+        audio_entropy: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Forward pass with multi-modal uncertainty aggregation."""
+        x = self.backbone(scene_embedding)
         
-        Arguments:
-            scene_embedding: Scene embedding [B, scene_dim]
+        # Future: additive uncertainty penalties.
+        if ocr_entropy is not None:
+            x = x - ocr_entropy
+        if audio_entropy is not None:
+            x = x - audio_entropy
         
-        Returns:
-            Dictionary with:
-                - 'uncertainty_score': [B, 1] - Uncertainty [0, 1]
-        """
-        # Efficient forward pass with LayerNorm and dropout
-        x = self.relu(self.norm1(self.fc1(scene_embedding)))
-        x = self.dropout(x)
-        x = self.relu(self.norm2(self.fc2(x)))
-        x = self.dropout(x)
-        uncertainty = self.sigmoid(self.fc3(x))  # [B, 1]
+        confidence_logit = self.confidence_logit(x)
+        confidence = torch.sigmoid(confidence_logit)
+        uncertainty = 1.0 - confidence
         
         return {
-            'uncertainty_score': uncertainty
+            "global_confidence": confidence,
+            "confidence_logit": confidence_logit,
+            "uncertainty_score": uncertainty,  # Backward compatibility.
         }
+
+
+# Backward compatibility alias.
+UncertaintyHead = GlobalConfidenceAggregator
+
+
+
+
+
 
