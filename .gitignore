@@ -100,3 +100,4 @@ ml/models/attention/cross_task_attention.py
 # Local sync helpers (do not commit)
 commit_msg_for_path.py
 sync_important.sh
+rewrite_commit_messages.sh
