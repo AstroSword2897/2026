@@ -1,0 +1,97 @@
+# MaxSight Training Configuration: T5_TEMPORAL
+# Temporal modeling (video), All features enabled
+# Target: Cloud GPU training, ~320M parameters
+
+# Model Configuration
+model:
+  tier: "T5_TEMPORAL"
+  num_classes: 80
+  use_se_attention: true
+  use_cbam_attention: true
+  use_hybrid_backbone: true
+  use_dynamic_conv: true
+  use_cross_task_attention: true
+  use_cross_modal_attention: true
+  use_temporal_modeling: true  # Temporal modeling enabled
+  use_retrieval: true
+
+# Data Configuration
+data:
+  train_annotation_file: "datasets/cleaned_splits/train.json"
+  val_annotation_file: "datasets/cleaned_splits/val.json"
+  test_annotation_file: "datasets/cleaned_splits/test.json"
+  image_dir: "datasets/coco_raw"
+  audio_dir: null
+  batch_size: 4  # Very small batch for largest model
+  num_workers: 8  # Increased for GPU-bound training (model is compute-bound)
+  pin_memory: true
+  max_objects: 10
+  condition_mode: null
+  apply_lighting_augmentation: true
+  use_weighted_sampling: false
+
+# Training Configuration
+training:
+  num_epochs: 150
+  learning_rate: 7.5e-5  # Sweet spot for 300-400M params at batch 32
+  weight_decay: 0.05  # Higher to prevent overfitting in expressive model
+  # Note: momentum removed - AdamW doesn't use it
+  optimizer: "AdamW"
+  scheduler: "cosine"
+  min_lr: 1e-6  # Prevent late-stage collapse when temporal heads overfit
+  warmup_epochs: 20  # Give GradNorm time to stabilize
+  gradient_clip_norm: 1.0  # Lower to 0.8 if seeing loss spikes after warmup
+  mixed_precision: false  # FP32 only
+  accumulate_grad_batches: 8  # Effective batch size 32
+
+# Loss Configuration
+# Rebalanced: box_regression no longer tyrannical, accessibility tasks get real signal
+# Semantic heads cross 0.3 activation threshold where they actually learn
+loss:
+  use_gradnorm: true
+  loss_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0  # Reduced from 5.0 - still important but not dominant
+    distance: 0.7  # Accessibility-critical
+    urgency: 1.5  # Accessibility-critical
+    motion: 0.6
+    therapy_state: 0.8
+    roi_priority: 0.4
+    navigation_difficulty: 0.5  # Accessibility-critical
+    scene_description: 0.3  # Above activation threshold
+    ocr: 0.4  # Above activation threshold
+    scene_graph: 0.3  # Above activation threshold
+    sound_events: 0.4  # Above activation threshold
+    personalization: 0.3  # Above activation threshold
+    predictive_alerts: 0.6
+
+# Validation Configuration
+validation:
+  val_check_interval: 0.5
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+  # Note: Ignore validation loss for first 25 epochs
+  # Watch loss smoothness, not absolute value - temporal models lie early
+
+# Checkpointing
+checkpoint:
+  save_dir: "checkpoints/t5_temporal"
+  save_last: true
+  save_every_n_epochs: 10
+
+# Logging
+logging:
+  log_dir: "logs/t5_temporal"
+  log_every_n_steps: 50
+  tensorboard: true
+
+# Target: mAP@0.5 >= 0.5 via inference sweep only (no retraining).
+target_metrics:
+  mAP_50: 0.5
+
+# Device
+device: "auto"
+seed: 42
+
