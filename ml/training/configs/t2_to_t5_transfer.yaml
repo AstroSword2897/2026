@@ -1,0 +1,168 @@
+# MaxSight Tier Transfer Configuration: T2_HYBRID_VIT → T5_TEMPORAL
+# 
+# Prerequisites (validate before transfer):
+# - T2 val loss plateaued ≥ 10 epochs
+# - Box AP stable (±1%)
+# - Accessibility heads (urgency, distance, navigation) have non-zero gradients
+# - No NaNs in last 20 epochs
+# - GradNorm scaling stabilized
+
+# Source Model (T2)
+source:
+  checkpoint: "checkpoints/t2_hybrid_vit/best_model.pth"
+  tier: "T2_HYBRID_VIT"
+  
+# Target Model (T5)
+target:
+  tier: "T5_TEMPORAL"
+  checkpoint_dir: "checkpoints/t5_temporal_transfer"
+
+# Transfer Configuration
+transfer:
+  # Validate source checkpoint before transfer
+  validate_source: true
+  
+  # Weight transfer
+  transfer_spatial_only: true  # Only transfer spatial representation, not coordination
+  strict_transfer: false  # Allow missing keys (for new T5 components)
+  
+  # Freeze schedule (corrected timing)
+  train_new_heads_only_epochs: 5   # Epochs 0-5: Freeze CNN+ViT, train new T5 heads only
+  unfreeze_detection_epochs: 15    # Epochs 5-15: Unfreeze detection + classification
+  unfreeze_vit_partial_epochs: 30  # Epochs 15-30: Unfreeze top 40% ViT
+  unfreeze_vit_full_epochs: 45     # Epochs 30-45: Unfreeze full ViT
+  unfreeze_cnn_epochs: 45          # Epochs 45+: Unfreeze CNN (last)
+  
+  # Loss unlock schedule (aligned with representation readiness)
+  phase_1_epochs: 10  # Epochs 0-10: Detection only
+  phase_2_epochs: 25  # Epochs 10-25: + Navigation
+  phase_3_epochs: 40  # Epochs 25-40: + Therapy/urgency
+  phase_4_epochs: 40  # Epochs 40+: All losses
+
+# Training Configuration (T5 with transfer)
+training:
+  num_epochs: 150
+  base_learning_rate: 7.5e-5  # Base LR for T5
+  
+  # Parameter-grouped LR multipliers (tightened spread)
+  lr_multipliers:
+    cnn_backbone: 0.2       # ×0.2: CNN backbone (more conservative)
+    vit_backbone: 0.5       # ×0.5: ViT backbone (needs more plasticity for temporal)
+    detection_heads: 0.6    # ×0.6: Detection/box heads
+    temporal: 1.0          # ×1.0: Temporal modules
+    cross_attention: 1.0    # ×1.0: Cross-task/modal attention
+    new_heads: 1.3         # ×1.3: New Tier-5 heads (must move fastest or lag permanently)
+  
+  weight_decay: 0.05
+  optimizer: "AdamW"
+  scheduler: "cosine"
+  min_lr: 1e-6
+  warmup_epochs: 20
+  gradient_clip_norm: 1.0
+  mixed_precision: false  # FP32 only
+  accumulate_grad_batches: 8  # Effective batch size 32
+
+# Loss Configuration (with unlock schedule)
+loss:
+  use_gradnorm: true
+  
+  # Phase 1 (epochs 0-10): Detection only
+  phase_1_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    # Disabled: therapy_state, roi_priority, navigation_difficulty,
+    # scene_description, ocr, scene_graph, sound_events,
+    # personalization, predictive_alerts
+  
+  # Phase 2 (epochs 10-25): + Navigation
+  phase_2_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    roi_priority: 0.4
+    navigation_difficulty: 0.5
+    # Still disabled: therapy_state, scene_description, ocr, scene_graph,
+    # sound_events, personalization, predictive_alerts
+  
+  # Phase 3 (epochs 25-40): + Therapy/urgency
+  phase_3_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    therapy_state: 0.8
+    roi_priority: 0.4
+    navigation_difficulty: 0.5
+    # Still disabled: scene_description, ocr, scene_graph,
+    # sound_events, personalization, predictive_alerts
+  
+  # Phase 4 (epochs 40+): All tasks enabled
+  phase_4_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    therapy_state: 0.8
+    roi_priority: 0.4
+    navigation_difficulty: 0.5
+    scene_description: 0.3
+    ocr: 0.4
+    scene_graph: 0.3
+    sound_events: 0.4
+    personalization: 0.3
+    predictive_alerts: 0.6
+
+# Validation Configuration
+validation:
+  val_check_interval: 0.5
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+  
+  # Transfer-specific validation expectations (revised)
+  # Epochs 0-5: Metrics noisy, loss spikes (expected)
+  # Epochs 5-15: Detection stabilizes
+  # Epochs 15-30: Navigation loss drops
+  # Epochs 30-45: Temporal heads wake up
+  # Epochs 45-70: T5 surpasses T2 metrics
+  # Epochs 70+: Diminishing returns
+  
+  # Red flags to watch for:
+  # - T5 beats T2 before epoch 30 → data leakage or frozen layers misconfigured
+  # - Immediate val improvement (means leakage)
+  # - Box AP collapse after epoch 5
+  # - Temporal loss dominates total loss
+
+# Checkpointing
+checkpoint:
+  save_dir: "checkpoints/t5_temporal_transfer"
+  save_last: true
+  save_every_n_epochs: 5  # More frequent until epoch 50
+  save_frequent_until_epoch: 50
+  save_every_n_epochs_after: 10  # Then every 10 epochs
+  
+  # Never overwrite source T2 checkpoint
+  preserve_source_checkpoint: true
+
+# Logging
+logging:
+  log_dir: "logs/t5_temporal_transfer"
+  log_every_n_steps: 50
+  tensorboard: true
+  log_transfer_stats: true  # Log transfer statistics
+
+# Device
+device: "auto"
+seed: 42
+
