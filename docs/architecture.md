@@ -1,117 +1,73 @@
-# EnviroSight CNN Architecture Design
+# MaxSight architecture
+
+This document describes the model and system architecture end to end.
 
 ## Overview
-Multi-level CNN architecture for environmental scene understanding, designed to support 10 vision conditions with condition-specific adaptations.
 
-## Architecture Levels
+MaxSight is a multi-task vision (and optional audio) model for accessibility. It uses a shared backbone and feature pyramid, then many task-specific heads. Input is typically RGB images `[B, 3, 224, 224]` and optionally audio features; outputs include detections, urgency, distance, depth, motion, therapy state, scene description, and more.
 
-### Level 1: Low-Level Features (Backbone)
-- **ResNet50** (pretrained on ImageNet)
-- Extracts edges, textures, and basic visual features
-- Output: 2048-d feature vector per spatial location
-- Spatial resolution: 7x7 (from 224x224 input)
+## Tiers and capabilities
 
-### Level 2: Object Detection
-- **Feature Pyramid Network (FPN)** on ResNet50 features
-- Multi-scale object detection
-- Handles objects of various sizes
-- Output: Feature maps at multiple scales
+The codebase uses capability tiers (T0–T5) that control which components are enabled:
 
-### Level 3: Scene Semantics
-- **Multi-Head Attention** mechanism
-- Context understanding (indoor/outdoor, room type)
-- Danger level assessment
-- Output: Scene context embedding (512-d)
+- **T0 (baseline):** ResNet50 + FPN + core detection heads only.
+- **T1:** Adds attention (CBAM, SE).
+- **T2:** Adds hybrid CNN–ViT backbone.
+- **T3:** Adds cross-task attention.
+- **T4:** Adds cross-modal (audio–visual) fusion.
+- **T5:** Adds temporal encoder (ConvLSTM / TimeSformer) and full retrieval.
 
-### Level 4: Structured Outputs
-Five parallel output heads:
+Stage A (ResNet50 + FPN) is always used for safety-critical, low-latency features; Stage B is tier-dependent and can add ViT, temporal, and retrieval.
 
-1. **Object Classification Head**
-   - Input: FPN features
-   - Architecture: 2x Linear(2048 → 1024 → 48)
-   - Output: 48 environmental classes
-   - Activation: Softmax
+## Backbone and FPN
 
-2. **Spatial Localization Head**
-   - Input: FPN features
-   - Architecture: 2x Linear(2048 → 1024 → 4)
-   - Output: Bounding boxes (x, y, w, h)
-   - Activation: Sigmoid (normalized coordinates)
+- **Backbone:** ResNet50 (or hybrid CNN–ViT in T2+) in `ml/models/backbone/`. Produces multi-scale feature maps.
+- **FPN:** Feature Pyramid Network in the main model builds C2–C5 and P2–P5 for multi-scale detection.
+- **Dynamic convolution:** Optional adaptive convolutions in `ml/models/backbone/dynamic_conv.py` for condition-adaptive processing.
 
-3. **Scene Description Head**
-   - Input: Attention context + FPN features
-   - Architecture: Linear(2048+512 → 512)
-   - Output: 512-d embedding for TTS
-   - Activation: Tanh
+## Heads
 
-4. **Urgency Scoring Head**
-   - Input: FPN features + scene context
-   - Architecture: Linear(2048+512 → 4)
-   - Output: 4 urgency levels (safe, caution, warning, danger)
-   - Activation: Softmax
+Heads live under `ml/models/heads/` and consume shared features:
 
-5. **Distance Estimation Head**
-   - Input: FPN features + bounding box size
-   - Architecture: Linear(2048+4 → 3)
-   - Output: 3 distance zones (near, medium, far)
-   - Activation: Softmax
+- **Detection:** Objectness, classification, box regression (anchor-free, FCOS-style). COCO 91 classes plus accessibility classes.
+- **Urgency and distance:** Urgency levels (e.g. 0–3), distance zones (near / medium / far).
+- **Therapy-related:** Contrast head, depth head, motion head, fatigue head, therapy state head.
+- **Scene and text:** Scene description head, OCR head, ROI priority head.
+- **Multimodal:** Sound event head when audio is used; personalization and predictive alert heads.
 
-## Audio Fusion Branch (Optional)
-- **Input**: MFCC features (128-d)
-- **Architecture**: Linear(128 → 256) → BatchNorm → ReLU → Dropout(0.5) → Linear(256 → 512)
-- **Fusion**: Concatenate with visual features before attention
-- **Output**: Audio-enhanced scene context
+Heads are gated by tier and condition mode so only the relevant subset runs per run.
 
-## Condition-Specific Adaptations
+## Fusion and temporal
 
-### Glaucoma Mode
-- Separate attention for center (0-40% width) vs peripheral (40-100% width)
-- Peripheral objects get +0.2 urgency boost
+- **Multimodal fusion:** `ml/models/fusion/multimodal_fusion.py` combines visual and audio features for T4+.
+- **Temporal encoder:** `ml/models/temporal/temporal_encoder.py` (ConvLSTM and/or TimeSformer) for T5 temporal modeling.
+- **Scene graph:** `ml/models/scene_graph/scene_graph_encoder.py` for relational reasoning; often stubbed or disabled for export.
 
-### AMD Mode
-- Dual-path: high-res center crop (40% region) + full-frame edge detection
-- Edge objects prioritized in output
+## Retrieval
 
-### Color Blindness Mode
-- Additional color classification head: Linear(2048 → 12)
-- 12 color categories output per object
+- **Encoders:** Patch, region, global, OCR, depth, audio in `ml/retrieval/encoders/`.
+- **Indexing:** `ml/retrieval/indexing/` builds and manages neural indexes.
+- **Retrieval:** Two-stage (e.g. ANN then rerank) in `ml/retrieval/retrieval/`.
 
-### CVI Mode
-- Single-object focus: only top-1 detection
-- Simplified class names
+## Condition-specific behavior
 
-### Low-Light Mode (Retinitis Pigmentosa)
-- Preprocessing: Gamma correction + histogram stretching
-- Enhanced feature extraction
+The model supports multiple vision conditions (e.g. glaucoma, AMD, cataracts, CVI). Condition affects:
 
-## Parameter Count
-- ResNet50 backbone: ~23M parameters
-- FPN: ~2M parameters
-- Attention: ~500K parameters
-- Output heads: ~1M parameters
-- **Total: ~26.5M parameters**
+- Preprocessing (e.g. in `ml/utils/preprocessing.py`): contrast, blur, central/peripheral emphasis.
+- Which heads are emphasized and how outputs are scheduled (e.g. `ml/utils/output_scheduler.py`).
 
-## Input/Output Specifications
+## Data flow (inference)
 
-### Input
-- **Image**: 224x224x3 (RGB, normalized with ImageNet stats)
-- **Audio** (optional): 128-d MFCC features
+1. Input: images (and optionally audio features).
+2. Preprocessing: condition-specific normalization and augmentation (if any).
+3. Backbone + FPN: multi-scale features.
+4. Heads: run in parallel where enabled; produce raw logits and scores.
+5. Post-processing: NMS, thresholding, scheduling (urgency, distance, etc.).
+6. Output: dictionary of tensors and optional scene/OCR/therapy outputs.
 
-### Output
-- **Classifications**: [batch, 48] (48 object classes)
-- **Bounding boxes**: [batch, N, 4] (N detections, x,y,w,h)
-- **Scene embedding**: [batch, 512]
-- **Urgency scores**: [batch, N, 4]
-- **Distance zones**: [batch, N, 3]
+## Export and deployment
 
-## Training Strategy
-- **Backbone**: Frozen for first 5 epochs, then fine-tuned
-- **Learning rate**: 1e-4 for backbone, 1e-3 for heads
-- **Optimizer**: AdamW with weight decay 1e-4
-- **Scheduler**: Cosine annealing
-- **Batch size**: 16 (adjust based on GPU memory)
+- **Export:** `ml/training/export.py` supports JIT, ExecuTorch (.pte), CoreML, ONNX. Dict outputs are flattened or stubbed for trace-friendly formats.
+- **iOS bundle:** `export_ios_bundle()` produces a folder with model, configs, and a processing reference for Xcode integration.
 
-## Inference Performance
-- **Target latency**: <500ms on Apple Silicon
-- **Model size**: <50MB after quantization
-- **Memory**: <250MB RAM
+For more on training layout and data flow, see `docs/training_architecture.md` and `docs/training-data-loading.md`.
