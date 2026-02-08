@@ -1,8 +1,4 @@
-"""
-Schema Validator, Downgrade Policy, and Stress Tests
-
-Validates outputs against schema v1.1, enforces safety rules, and runs stress tests.
-"""
+"""Schema Validator, Downgrade Policy, and Stress Tests Validates outputs against schema v1.1, enforces safety rules, and runs stress tests."""
 
 import json
 import time
@@ -14,33 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 class SchemaValidator:
-    """
-    Validates outputs against accessibility output schema v1.1.
-    Enforces safety rules and semantic clarity.
-    """
+    """Validates outputs against accessibility output schema v1.1. Enforces safety rules and semantic clarity."""
     
     def __init__(self, strict: bool = True):
-        """
-        Initialize validator.
-        
-        Arguments:
-            strict: If True, enforce all rules strictly. If False, allow warnings.
-        """
+        """Initialize validator. Arguments: strict: If True, enforce all rules strictly. If False, allow warnings."""
         self.strict = strict
     
     def validate(self, outputs: Dict[str, Any]) -> Tuple[bool, List[str]]:
-        """
-        Validate outputs against schema v1.1.
-        
-        Arguments:
-            outputs: Output dictionary to validate
-        
-        Returns:
-            Tuple of (is_valid, list_of_errors)
-        """
+        """Validate outputs against schema v1.1. Arguments: outputs: Output dictionary to validate Returns: Tuple of (is_valid, list_of_errors)"""
         errors = []
         
-        # Check required fields
+        # Check required fields.
         required_fields = ['frame_id', 'timestamp', 'detections', 'scene_analysis']
         for field in required_fields:
             if field not in outputs:
@@ -49,11 +29,11 @@ class SchemaValidator:
         if errors:
             return False, errors
         
-        # Validate detections
+        # Validate detections.
         det_errors = self._validate_detections(outputs.get('detections', []))
         errors.extend(det_errors)
         
-        # Validate scene_analysis
+        # Validate scene_analysis.
         scene_errors = self._validate_scene_analysis(outputs.get('scene_analysis', {}))
         errors.extend(scene_errors)
         
@@ -79,13 +59,13 @@ class SchemaValidator:
         errors = []
         
         for i, det in enumerate(detections):
-            # Check required fields
+            # Check required fields.
             required = ['class', 'class_name', 'confidence', 'box', 'distance', 'urgency', 'priority']
             for field in required:
                 if field not in det:
                     errors.append(f"Detection {i}: Missing required field '{field}'")
             
-            # Check confidence range
+            # Check confidence range.
             if 'confidence' in det:
                 conf = det['confidence']
                 if not (0 <= conf <= 1):
@@ -106,7 +86,7 @@ class SchemaValidator:
         """Validate scene_analysis."""
         errors = []
         
-        # Check required fields
+        # Check required fields.
         required = ['scene_type', 'lighting_class']
         for field in required:
             if field not in scene:
@@ -130,7 +110,7 @@ class SchemaValidator:
                         f"scene_analysis: Old field name '{old_name}' found. Use '{new_name}' instead."
                     )
         
-        # Check for embedded images (should be references)
+        # Check for embedded images (expected as references)
         if 'hazard_density_heatmap' in scene:
             errors.append(
                 "scene_analysis: 'hazard_density_heatmap' embedded. Use 'hazard_density_heatmap_ref' instead."
@@ -142,7 +122,7 @@ class SchemaValidator:
         """Validate functional_vision."""
         errors = []
         
-        # Check for old field names
+        # Check for old field names.
         old_fields = {
             'contrast_sensitivity': 'user_contrast_capacity',
             'glare_risk_level': 'user_glare_sensitivity',
@@ -166,36 +146,36 @@ class SchemaValidator:
         """Validate output_recommendations with safety gating."""
         errors = []
         
-        # output_validity is REQUIRED
+        # Output_validity is REQUIRED.
         if 'output_validity' not in outputs:
             errors.append(
                 "output_recommendations: Missing required field 'output_validity' "
                 "(required for all action-oriented outputs)"
             )
-            return errors  # Can't validate further without validity
+            return errors  # Can't validate further without validity.
         
         validity = outputs['output_validity']
         
-        # Check required fields in output_validity
+        # Check required fields in output_validity.
         if 'confidence' not in validity:
             errors.append("output_validity: Missing required field 'confidence'")
         if 'safe_to_act' not in validity:
             errors.append("output_validity: Missing required field 'safe_to_act'")
         
-        # Enforce safety rules
+        # Enforce safety rules.
         if 'confidence' in validity and 'safe_to_act' in validity:
             confidence = validity['confidence']
             safe_to_act = validity['safe_to_act']
             uncertainty = validity.get('uncertainty', 0.0)
             
-            # Rule 1: safe_to_act must be false if confidence < 0.5
+            # Rule 1: safe_to_act must be false if confidence < 0.5.
             if confidence < 0.5 and safe_to_act:
                 errors.append(
                     f"output_validity: safe_to_act=true but confidence={confidence:.2f} < 0.5 "
                     "(violates safety rule)"
                 )
             
-            # Rule 2: safe_to_act must be false if uncertainty > 0.7
+            # Rule 2: safe_to_act must be false if uncertainty > 0.7.
             if uncertainty > 0.7 and safe_to_act:
                 errors.append(
                     f"output_validity: safe_to_act=true but uncertainty={uncertainty:.2f} > 0.7 "
@@ -216,7 +196,7 @@ class SchemaValidator:
         functional_fields = set(functional.keys())
         
         # These are intentionally different (scene vs user)
-        allowed_overlap = set()  # No overlap allowed in v1.1
+        allowed_overlap = set()  # No overlap allowed in v1.1.
         
         overlap = (scene_fields & functional_fields) - allowed_overlap
         
@@ -230,57 +210,38 @@ class SchemaValidator:
 
 
 class SchemaDowngrader:
-    """
-    Downgrades outputs to safe state when validation fails or heads are missing.
-    
-    Implements graceful degradation policy.
-    """
+    """Downgrades outputs to safe state when validation fails or heads are missing. Implements graceful degradation policy."""
     
     def __init__(self, min_confidence: float = 0.5, max_uncertainty: float = 0.7):
-        """
-        Initialize downgrader.
-        
-        Arguments:
-            min_confidence: Minimum confidence for safe outputs
-            max_uncertainty: Maximum uncertainty for safe outputs
-        """
+        """Initialize downgrader. Arguments: min_confidence: Minimum confidence for safe outputs max_uncertainty: Maximum uncertainty for safe outputs."""
         self.min_confidence = min_confidence
         self.max_uncertainty = max_uncertainty
     
     def downgrade(self, outputs: Dict[str, Any], reason: str = "validation_failed") -> Dict[str, Any]:
-        """
-        Downgrade outputs to safe state.
-        
-        Arguments:
-            outputs: Output dictionary to downgrade
-            reason: Reason for downgrade
-        
-        Returns:
-            Downgraded outputs dictionary
-        """
+        """Downgrade outputs to safe state."""
         downgraded = outputs.copy()
         
-        # Ensure output_validity exists and is safe
+        # Ensure output_validity exists and is safe.
         if 'output_recommendations' not in downgraded:
             downgraded['output_recommendations'] = {}
         
         output_validity = downgraded['output_recommendations'].get('output_validity', {})
         
-        # Set safe defaults
+        # Set safe defaults.
         output_validity['confidence'] = min(
             output_validity.get('confidence', 0.0),
-            self.min_confidence - 0.1  # Force below threshold
+            self.min_confidence - 0.1  # Force below threshold.
         )
         output_validity['safe_to_act'] = False
         output_validity['uncertainty'] = max(
             output_validity.get('uncertainty', 0.0),
-            self.max_uncertainty + 0.1  # Force above threshold
+            self.max_uncertainty + 0.1  # Force above threshold.
         )
         output_validity['downgrade_reason'] = reason
         
         downgraded['output_recommendations']['output_validity'] = output_validity
         
-        # Remove action-oriented outputs
+        # Remove action-oriented outputs.
         if 'audio' in downgraded['output_recommendations']:
             downgraded['output_recommendations']['audio'] = {}
         if 'haptic' in downgraded['output_recommendations']:
@@ -295,34 +256,25 @@ class SchemaDowngrader:
         outputs: Dict[str, Any],
         missing_heads: List[str]
     ) -> Dict[str, Any]:
-        """
-        Downgrade outputs when heads are missing.
-        
-        Arguments:
-            outputs: Output dictionary
-            missing_heads: List of missing head names
-        
-        Returns:
-            Downgraded outputs dictionary
-        """
+        """Downgrade outputs when heads are missing."""
         downgraded = outputs.copy()
         
-        # Update output_validity
+        # Update output_validity.
         if 'output_recommendations' not in downgraded:
             downgraded['output_recommendations'] = {}
         
         output_validity = downgraded['output_recommendations'].get('output_validity', {})
         
-        # Mark degraded modes
+        # Mark degraded modes.
         if 'degraded_modes' not in output_validity:
             output_validity['degraded_modes'] = []
         output_validity['degraded_modes'].extend(missing_heads)
         
-        # Increase uncertainty
+        # Increase uncertainty.
         current_uncertainty = output_validity.get('uncertainty', 0.0)
         output_validity['uncertainty'] = min(1.0, current_uncertainty + 0.2 * len(missing_heads))
         
-        # Check if we need to set safe_to_act = false
+        # Check if we need to set safe_to_act = false.
         if output_validity['uncertainty'] > self.max_uncertainty:
             output_validity['safe_to_act'] = False
         
@@ -336,17 +288,7 @@ def validate_and_downgrade(
     strict: bool = True,
     auto_downgrade: bool = True
 ) -> Tuple[Dict[str, Any], bool, List[str]]:
-    """
-    Convenience function to validate and optionally downgrade outputs.
-    
-    Arguments:
-        outputs: Output dictionary to validate
-        strict: Whether to enforce strict validation
-        auto_downgrade: Whether to automatically downgrade on failure
-    
-    Returns:
-        Tuple of (outputs, is_valid, errors)
-    """
+    """Convenience function to validate and optionally downgrade outputs."""
     validator = SchemaValidator(strict=strict)
     is_valid, errors = validator.validate(outputs)
     
@@ -358,9 +300,7 @@ def validate_and_downgrade(
     return outputs, is_valid, errors
 
 
-# ============================================================================
-# Schema Stress Tests
-# ============================================================================
+# Schema Stress Tests.
 
 @dataclass
 class SchemaStressTestResult:
@@ -601,4 +541,10 @@ class SchemaStressTester:
                 for name, result in results.items()
             }
         }
+
+
+
+
+
+
 
