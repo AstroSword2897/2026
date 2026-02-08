@@ -1,0 +1,82 @@
+# MaxSight Training Configuration: T5 safety-focused (reference only; do not retrain).
+# Same T5 architecture as t5_temporal; loss weights tuned for safety-critical detection.
+# Target: mAP@0.5 >= 0.5 via inference sweep only.
+
+model:
+  tier: "T5_TEMPORAL"
+  num_classes: 80
+  use_se_attention: true
+  use_cbam_attention: true
+  use_hybrid_backbone: true
+  use_dynamic_conv: true
+  use_cross_task_attention: true
+  use_cross_modal_attention: true
+  use_temporal_modeling: true
+  use_retrieval: true
+
+data:
+  train_annotation_file: "datasets/cleaned_splits/train.json"
+  val_annotation_file: "datasets/cleaned_splits/val.json"
+  test_annotation_file: "datasets/cleaned_splits/test.json"
+  image_dir: "datasets/coco_raw"
+  audio_dir: null
+  batch_size: 4
+  num_workers: 8
+  pin_memory: true
+  max_objects: 10
+  condition_mode: null
+  apply_lighting_augmentation: true
+  use_weighted_sampling: false
+
+training:
+  num_epochs: 150
+  learning_rate: 7.5e-5
+  weight_decay: 0.05
+  optimizer: "AdamW"
+  scheduler: "cosine"
+  min_lr: 1e-6
+  warmup_epochs: 20
+  gradient_clip_norm: 1.0
+  mixed_precision: false
+  accumulate_grad_batches: 8
+
+loss:
+  use_gradnorm: true
+  loss_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.8
+    urgency: 1.8
+    motion: 0.6
+    therapy_state: 0.8
+    roi_priority: 0.5
+    navigation_difficulty: 0.6
+    scene_description: 0.3
+    ocr: 0.4
+    scene_graph: 0.3
+    sound_events: 0.4
+    personalization: 0.3
+    predictive_alerts: 0.7
+
+validation:
+  val_check_interval: 0.5
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+
+checkpoint:
+  save_dir: "checkpoints/t5_sec"
+  save_last: true
+  save_every_n_epochs: 10
+
+logging:
+  log_dir: "logs/t5_sec"
+  log_every_n_steps: 50
+  tensorboard: true
+
+target_metrics:
+  mAP_50: 0.5
+
+device: "auto"
+seed: 42
