@@ -1,0 +1,82 @@
+# MaxSight Training Configuration: T1_ATTENTION
+# ResNet50 + FPN + SE/CBAM attention, Tier 1 + Tier 2 heads
+# Target: Cloud GPU training, ~50M parameters
+
+# Model Configuration
+model:
+  tier: "T1_ATTENTION"
+  num_classes: 80
+  use_se_attention: true
+  use_cbam_attention: true
+  use_hybrid_backbone: false
+  use_dynamic_conv: false
+  use_cross_task_attention: false
+  use_cross_modal_attention: false
+  use_temporal_modeling: false
+  use_retrieval: false
+
+# Data Configuration
+data:
+  train_annotation_file: "datasets/cleaned_splits/train.json"
+  val_annotation_file: "datasets/cleaned_splits/val.json"
+  test_annotation_file: "datasets/cleaned_splits/test.json"
+  image_dir: "datasets/coco_raw"
+  audio_dir: null
+  batch_size: 24  # Slightly smaller due to attention overhead
+  num_workers: 8  # Increased for GPU-bound training
+  pin_memory: true
+  max_objects: 10
+  condition_mode: null
+  apply_lighting_augmentation: true
+  use_weighted_sampling: false
+
+# Training Configuration
+training:
+  num_epochs: 120
+  learning_rate: 1.2e-4  # Adjusted for 50M params, can use slightly higher LR
+  weight_decay: 0.05
+  momentum: 0.9  # SGD uses momentum
+  optimizer: "SGD"  # SGD still fine for smaller model
+  scheduler: "cosine"
+  min_lr: 1e-6
+  warmup_epochs: 5
+  gradient_clip_norm: 1.0
+  mixed_precision: false  # FP32 only
+  accumulate_grad_batches: 1
+
+# Loss Configuration
+# Rebalanced for attention-based multi-task learning
+loss:
+  use_gradnorm: true
+  loss_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+    motion: 0.6
+    therapy_state: 0.8
+
+# Validation Configuration
+validation:
+  val_check_interval: 0.5
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+
+# Checkpointing
+checkpoint:
+  save_dir: "checkpoints/t1_attention"
+  save_last: true
+  save_every_n_epochs: 10
+
+# Logging
+logging:
+  log_dir: "logs/t1_attention"
+  log_every_n_steps: 50
+  tensorboard: true
+
+# Device
+device: "auto"
+seed: 42
+
