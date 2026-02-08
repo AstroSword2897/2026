@@ -1,0 +1,80 @@
+# MaxSight Training Configuration: T0_BASELINE_CNN
+# Baseline ResNet50 + FPN, Tier 1 heads only
+# Target: Cloud GPU training, ~29M parameters
+
+# Model Configuration
+model:
+  tier: "T0_BASELINE_CNN"
+  num_classes: 80  # COCO base classes
+  use_se_attention: false
+  use_cbam_attention: false
+  use_hybrid_backbone: false
+  use_dynamic_conv: false
+  use_cross_task_attention: false
+  use_cross_modal_attention: false
+  use_temporal_modeling: false
+  use_retrieval: false
+
+# Data Configuration
+data:
+  train_annotation_file: "datasets/cleaned_splits/train.json"
+  val_annotation_file: "datasets/cleaned_splits/val.json"
+  test_annotation_file: "datasets/cleaned_splits/test.json"
+  image_dir: "datasets/coco_raw"  # Auto-detects train2017/val2017
+  audio_dir: null
+  batch_size: 32
+  num_workers: 8  # Increased for GPU-bound training
+  pin_memory: true
+  max_objects: 10
+  condition_mode: null  # No condition-specific augmentation for baseline
+  apply_lighting_augmentation: true
+  use_weighted_sampling: false
+
+# Training Configuration
+training:
+  num_epochs: 100
+  learning_rate: 1.5e-3  # Higher LR acceptable for smaller 29M model
+  weight_decay: 0.05
+  momentum: 0.9  # SGD uses momentum
+  optimizer: "SGD"
+  scheduler: "cosine"
+  min_lr: 1e-6
+  warmup_epochs: 5
+  gradient_clip_norm: 1.0
+  mixed_precision: false  # FP32 only
+  accumulate_grad_batches: 1
+  
+# Loss Configuration
+# Rebalanced even for baseline - better multi-task learning
+loss:
+  use_gradnorm: false  # Simple loss for baseline
+  loss_weights:
+    detection: 1.0
+    classification: 1.2
+    box_regression: 3.0
+    distance: 0.7
+    urgency: 1.5
+  
+# Validation Configuration
+validation:
+  val_check_interval: 0.5  # Validate every 0.5 epochs
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+  
+# Checkpointing
+checkpoint:
+  save_dir: "checkpoints/t0_baseline"
+  save_last: true
+  save_every_n_epochs: 10
+  
+# Logging
+logging:
+  log_dir: "logs/t0_baseline"
+  log_every_n_steps: 50
+  tensorboard: true
+  
+# Device
+device: "auto"  # auto, cuda, mps, cpu
+seed: 42
+
