@@ -1,0 +1,23 @@
+[tool.pyright]
+include = ["ml", "tests"]
+exclude = ["**/__pycache__", "**/node_modules", "**/venv", "**/.venv"]
+pythonVersion = "3.10"
+pythonPlatform = "Darwin"
+extraPaths = ["../2026/venv/lib/python3.10/site-packages"]
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+reportAttributeAccessIssue = "none"
+reportGeneralTypeIssues = "warning"
+reportOptionalMemberAccess = "warning"
+reportOptionalSubscript = "warning"
+reportPrivateImportUsage = "none"
+typeCheckingMode = "basic"
+venvPath = "../2026"
+venv = "venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
