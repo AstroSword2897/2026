@@ -1,11 +1,4 @@
-"""
-Dynamic Convolution Modules for MaxSight 3.0
-
-Kernel weights adapt based on:
-- Lighting conditions (brightness, contrast)
-- Occlusion levels (detected via attention)
-- Motion blur (from temporal encoder)
-"""
+"""Dynamic Convolution Module for MaxSight 3.0 Per-sample adaptive kernels based on lighting, occlusion, and motion."""
 
 import torch
 import torch.nn as nn
@@ -14,15 +7,8 @@ from typing import Optional
 
 
 class DynamicConv2d(nn.Module):
-    """
-    Dynamic convolution where kernel weights adapt to input conditions.
-    
-    Architecture:
-    - Base kernel set: Multiple pre-defined kernels
-    - Condition predictor: Lightweight network to predict condition weights
-    - Dynamic kernel: Weighted combination of base kernels
-    """
-    
+    """Dynamic convolution where each sample uses a weighted combination of multiple base kernels based on input conditions."""
+
     def __init__(
         self,
         in_channels: int,
@@ -35,7 +21,7 @@ class DynamicConv2d(nn.Module):
         bias: bool = True
     ):
         super().__init__()
-        
+
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -43,129 +29,100 @@ class DynamicConv2d(nn.Module):
         self.stride = stride
         self.padding = padding if padding is not None else kernel_size // 2
         self.groups = groups
-        
-        # Base kernel set: Multiple kernels to choose from
+
+        # Base kernels.
         self.base_kernels = nn.ParameterList([
-            nn.Parameter(
-                torch.randn(out_channels, in_channels // groups, kernel_size, kernel_size) * 0.02
-            )
+            nn.Parameter(torch.empty(out_channels, in_channels // groups, kernel_size, kernel_size))
             for _ in range(num_kernels)
         ])
-        
-        # Condition predictor network
-        # Lightweight network to predict which kernels to use
+        for k in self.base_kernels:
+            nn.init.kaiming_normal_(k, mode='fan_out', nonlinearity='relu')
+
+        # Condition MLP: maps [lighting, occlusion, motion] -> kernel weights.
         condition_dim = max(in_channels // 4, 16)
-        self.condition_predictor = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_channels, condition_dim, 1, bias=False),
-            nn.ReLU(),
-            nn.Conv2d(condition_dim, num_kernels, 1, bias=False),
-            nn.Softmax(dim=1)
+        self.condition_mlp = nn.Sequential(
+            nn.Linear(4, condition_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(condition_dim, num_kernels),
+            nn.Softmax(dim=-1)  # Per-sample kernel weights.
         )
-        
-        # Bias (optional)
+
+        # Optional bias.
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_channels))
         else:
             self.register_parameter('bias', None)
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass with dynamic kernel generation.
-        
-        Args:
-            x: Input features [B, in_channels, H, W]
-        
-        Returns:
-            Output features [B, out_channels, H', W']
-        """
+
+    def forward(self, x: torch.Tensor, attention: Optional[torch.Tensor] = None, motion: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Forward pass with per-sample dynamic kernel."""
         B, C, H, W = x.shape
+
+        # Compute per-sample conditions.
+        lighting = self.compute_lighting_condition(x)  # [B, 2].
+        occlusion = self.compute_occlusion_score(attention) if attention is not None else torch.zeros(B, 1, device=x.device)
+        motion_cond = motion if motion is not None else torch.zeros(B, 1, device=x.device)
+
+        condition_vec = torch.cat([lighting, occlusion, motion_cond], dim=1)  # [B, 4].
+        kernel_weights = self.condition_mlp(condition_vec)  # [B, num_kernels].
+
+        # FIXED: Use grouped convolution trick instead of per-sample loop.
+        # Preserve GPU parallelism and compatibility with torch.compile.
+        # Stack kernels: [B*out_ch, in_ch/groups, K, K].
+        base_kernels = torch.stack(list(self.base_kernels), dim=0)  # [num_kernels, out_ch, in_ch/groups, K, K].
         
-        # Predict condition weights
-        condition_weights = self.condition_predictor(x)  # [B, num_kernels, 1, 1]
-        condition_weights = condition_weights.squeeze(-1).squeeze(-1)  # [B, num_kernels]
+        # Combine kernels per sample: [B, out_ch, in_ch/groups, K, K].
+        dynamic_kernels = torch.einsum('bk,kocwh->bocwh', kernel_weights, base_kernels)
         
-        # Generate dynamic kernel: weighted combination of base kernels
-        # Average over batch for kernel generation
-        dynamic_kernel = torch.zeros(
-            self.out_channels,
-            self.in_channels // self.groups,
-            self.kernel_size,
-            self.kernel_size,
-            device=x.device,
-            dtype=x.dtype
-        )
+        # Reshape for grouped convolution: [B*out_ch, in_ch/groups, K, K].
+        B, out_ch, in_ch_div_g, K, _ = dynamic_kernels.shape
+        kernels_flat = dynamic_kernels.reshape(B * out_ch, in_ch_div_g, K, K)
         
-        for i, base_kernel in enumerate(self.base_kernels):
-            # Average weight across batch
-            avg_weight = condition_weights[:, i].mean()
-            dynamic_kernel = dynamic_kernel + avg_weight * base_kernel
+        # Reshape input: [1, B*in_ch, H, W] for grouped conv.
+        _, C, H, W = x.shape
+        x_flat = x.reshape(1, B * C, H, W)
         
-        # Apply convolution
-        output = F.conv2d(
-            x,
-            dynamic_kernel,
-            bias=self.bias,
+        # Grouped convolution: groups=B ensures each sample uses its own kernel.
+        out = F.conv2d(
+            x_flat,
+            kernels_flat,
+            bias=None,  # Handle bias separately.
             stride=self.stride,
             padding=self.padding,
-            groups=self.groups
+            groups=B  # One group per sample so each channel is independent.
         )
         
-        return output
-    
-    def compute_lighting_condition(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Compute lighting condition metrics.
+        # Reshape back: [B, out_ch, H', W'].
+        out = out.reshape(B, out_ch, out.shape[2], out.shape[3])
         
-        Args:
-            x: Input features [B, C, H, W]
+        # Add bias if present.
+        if self.bias is not None:
+            out = out + self.bias.contiguous().reshape(1, -1, 1, 1)
         
-        Returns:
-            Condition vector [B, 2] (brightness, contrast)
-        """
-        # Brightness: global average
-        brightness = x.mean(dim=(2, 3))  # [B, C]
-        
-        # Contrast: standard deviation
-        contrast = x.std(dim=(2, 3))  # [B, C]
-        
-        # Combine into condition vector
-        condition = torch.stack([
-            brightness.mean(dim=1),
-            contrast.mean(dim=1)
-        ], dim=1)  # [B, 2]
-        
-        return condition
-    
-    def compute_occlusion_score(
-        self,
-        attention_weights: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute occlusion score from attention weights.
-        
-        Args:
-            attention_weights: Attention weights [B, H, W]
-        
-        Returns:
-            Occlusion score [B] (higher = more occluded)
-        """
-        occlusion_score = 1 - attention_weights.mean(dim=(1, 2))  # [B]
-        return occlusion_score
-    
-    def compute_motion_condition(
-        self,
-        motion_magnitude: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute motion condition from temporal encoder.
-        
-        Args:
-            motion_magnitude: Motion magnitude [B, 1]
-        
-        Returns:
-            Motion condition [B, 1]
-        """
-        return motion_magnitude
+        return out
+
+    @property
+    def output_size(self):
+        return self.kernel_size  # Note: H' = H if stride=1 and padding=kernel_size//2.
+
+    @staticmethod
+    def compute_lighting_condition(x: torch.Tensor) -> torch.Tensor:
+        """Compute brightness and contrast for each sample. Returns [B, 2]."""
+        brightness = x.mean(dim=(1, 2, 3), keepdim=True)  # [B,1,1,1].
+        contrast = x.std(dim=(1, 2, 3), keepdim=True)     # [B,1,1,1].
+        return torch.cat([brightness, contrast], dim=1)   # [B,2].
+
+    @staticmethod
+    def compute_occlusion_score(attention: torch.Tensor) -> torch.Tensor:
+        """Compute occlusion score from attention map [B,H,W] Returns [B,1]."""
+        return 1 - attention.mean(dim=(1, 2), keepdim=True)
+
+    @staticmethod
+    def compute_motion_condition(motion: torch.Tensor) -> torch.Tensor:
+        """Return motion condition [B,1]."""
+        return motion
+
+
+
+
 
 
