@@ -1,14 +1,4 @@
-"""
-Regularization, Transfer Learning, and Class Weighting
-
-Implements:
-- Dropout and DropConnect
-- Weight decay (L2 regularization)
-- Label smoothing
-- Transfer learning from pretrained backbones
-- Class weighting for imbalanced data
-- Focal loss for hard examples
-"""
+"""Regularization, Transfer Learning, and Class Weighting."""
 
 import torch
 import torch.nn as nn
@@ -22,7 +12,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# ==================== Dropout Variants ====================
 
 class SpatialDropout2d(nn.Module):
     """Spatial dropout that drops entire channels."""
@@ -35,7 +24,7 @@ class SpatialDropout2d(nn.Module):
         if not self.training or self.p == 0:
             return x
             
-        # x shape: [B, C, H, W]
+        # X shape: [B, C, H, W].
         mask = torch.ones(x.shape[0], x.shape[1], 1, 1, device=x.device)
         mask = F.dropout(mask, self.p, training=True)
         return x * mask
@@ -53,11 +42,11 @@ class DropConnect(nn.Module):
         if not self.training or self.p == 0:
             return self.module(x)
             
-        # For linear layers
+        # For linear layers.
         if hasattr(self.module, 'weight'):
             mask = torch.ones_like(self.module.weight)
             mask = F.dropout(mask, self.p, training=True)
-            # Temporarily modify weights
+            # Temporarily modify weights.
             original_weight = self.module.weight.data.clone()
             self.module.weight.data = self.module.weight.data * mask
             output = self.module(x)
@@ -80,19 +69,18 @@ class StochasticDepth(nn.Module):
             return x + residual
             
         if self.mode == 'row':
-            # Different probability for each sample in batch
+            # Different probability for each sample in batch.
             survival_rate = 1 - self.p
             if torch.rand(1).item() > survival_rate:
                 return x
             return x + residual / survival_rate
         else:
-            # Same probability for all
+            # Same probability for all.
             if torch.rand(1).item() < self.p:
                 return x
             return x + residual / (1 - self.p)
 
 
-# ==================== Loss Functions ====================
 
 class LabelSmoothingCrossEntropy(nn.Module):
     """Cross entropy with label smoothing."""
@@ -105,10 +93,10 @@ class LabelSmoothingCrossEntropy(nn.Module):
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         n_classes = pred.size(-1)
         
-        # One-hot encode targets
+        # One-hot encode targets.
         target_one_hot = F.one_hot(target, n_classes).float()
         
-        # Apply label smoothing
+        # Apply label smoothing.
         target_smooth = target_one_hot * (1 - self.smoothing) + \
                        self.smoothing / n_classes
         
@@ -123,18 +111,14 @@ class LabelSmoothingCrossEntropy(nn.Module):
 
 
 class FocalLoss(nn.Module):
-    """
-    Focal loss for handling class imbalance and hard examples.
-    
-    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
-    """
+    """Focal loss for handling class imbalance and hard examples. FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)"""
     
     def __init__(self, 
                  alpha: Optional[torch.Tensor] = None,
                  gamma: float = 2.0,
                  reduction: str = 'mean'):
         super().__init__()
-        self.alpha = alpha  # Per-class weights
+        self.alpha = alpha  # Per-class weights.
         self.gamma = gamma
         self.reduction = reduction
         
@@ -181,7 +165,7 @@ class ClassWeightedLoss(nn.Module):
             if cls < self.num_classes:
                 counts[cls] = count
                 
-        # Avoid division by zero
+        # Avoid division by zero.
         counts = torch.clamp(counts, min=1)
         total = counts.sum()
         
@@ -202,7 +186,7 @@ class ClassWeightedLoss(nn.Module):
         else:
             weights = torch.ones(self.num_classes)
             
-        # Normalize weights
+        # Normalize weights.
         weights = weights / weights.sum() * self.num_classes
         
         return weights
@@ -217,7 +201,6 @@ class ClassWeightedLoss(nn.Module):
             next(self.parameters()).device if list(self.parameters()) else 'cpu')
 
 
-# ==================== Transfer Learning ====================
 
 class TransferLearningConfig:
     """Configuration for transfer learning."""
@@ -239,12 +222,7 @@ class TransferLearningConfig:
 
 def load_pretrained_backbone(backbone_name: str = 'resnet50',
                             pretrained: bool = True) -> Tuple[nn.Module, int]:
-    """
-    Load pretrained backbone for transfer learning.
-    
-    Returns:
-        backbone module, output feature dimension
-    """
+    """Load pretrained backbone for transfer learning. Returns: backbone module, output feature dimension."""
     try:
         import torchvision.models as models
     except ImportError:
@@ -268,13 +246,13 @@ def load_pretrained_backbone(backbone_name: str = 'resnet50',
         
     model_fn, out_dim = backbones[backbone_name]
     
-    # Load model
+    # Load model.
     weights = 'IMAGENET1K_V1' if pretrained else None
     model = model_fn(weights=weights)
     
-    # Remove classification head
+    # Remove classification head.
     if 'resnet' in backbone_name:
-        backbone = nn.Sequential(*list(model.children())[:-2])  # Remove avgpool and fc
+        backbone = nn.Sequential(*list(model.children())[:-2])  # Remove avgpool and fc.
     elif 'efficientnet' in backbone_name:
         backbone = model.features
     elif 'mobilenet' in backbone_name:
@@ -305,26 +283,19 @@ def freeze_backbone(model: nn.Module,
 def gradual_unfreeze_step(model: nn.Module,
                          epoch: int,
                          schedule: Dict[int, int]):
-    """
-    Gradually unfreeze backbone layers according to schedule.
-    
-    Args:
-        model: Model with backbone
-        epoch: Current epoch
-        schedule: Dict mapping epoch -> number of layers to unfreeze
-    """
+    """Gradually unfreeze backbone layers according to schedule."""
     if epoch not in schedule:
         return
         
     layers_to_unfreeze = schedule[epoch]
     
     if layers_to_unfreeze == -1:
-        # Unfreeze all
+        # Unfreeze all.
         for param in model.parameters():
             param.requires_grad = True
         logger.info(f"Epoch {epoch}: Unfroze all layers")
     else:
-        # Unfreeze last N layers
+        # Unfreeze last N layers.
         layers = list(model.children())
         for i, layer in enumerate(layers):
             if i >= len(layers) - layers_to_unfreeze:
@@ -333,16 +304,11 @@ def gradual_unfreeze_step(model: nn.Module,
         logger.info(f"Epoch {epoch}: Unfroze last {layers_to_unfreeze} layers")
 
 
-# ==================== Weight Decay ====================
 
 def add_weight_decay(model: nn.Module,
                     weight_decay: float = 1e-5,
                     skip_list: Tuple[str, ...] = ('bias', 'bn', 'norm')) -> List[Dict]:
-    """
-    Create parameter groups with and without weight decay.
-    
-    Bias and batch norm parameters should not have weight decay.
-    """
+    """Create parameter groups with and without weight decay. Bias and batch norm parameters should not have weight decay."""
     decay = []
     no_decay = []
     
@@ -398,12 +364,9 @@ class WeightDecayScheduler:
                 param_group['weight_decay'] = wd
 
 
-# ==================== Regularization Manager ====================
 
 class RegularizationManager:
-    """
-    Central manager for all regularization techniques.
-    """
+    """Central manager for all regularization techniques."""
     
     def __init__(self,
                  model: nn.Module,
@@ -418,7 +381,7 @@ class RegularizationManager:
         self.dropout_rate = dropout_rate
         self.weight_decay = weight_decay
         
-        # Loss functions
+        # Loss functions.
         if use_focal_loss:
             self.criterion = FocalLoss(gamma=focal_gamma)
         elif label_smoothing > 0:
@@ -431,15 +394,14 @@ class RegularizationManager:
         else:
             self.criterion = nn.CrossEntropyLoss()
             
-        # Add dropout to model if not present
+        # Add dropout to model if not present.
         self._add_dropout(model, dropout_rate)
         
     def _add_dropout(self, model: nn.Module, rate: float):
         """Add dropout layers after each major block."""
-        # This is a simplified version - full implementation would be architecture-specific
         for name, module in model.named_children():
             if isinstance(module, (nn.Linear, nn.Conv2d)):
-                # Could wrap with dropout here
+                # Could wrap with dropout here.
                 pass
                 
     def get_optimizer_params(self) -> List[Dict]:
@@ -463,14 +425,7 @@ def compute_class_weights_from_dataset(
     num_classes: int,
     strategy: str = 'inverse_freq'
 ) -> torch.Tensor:
-    """
-    Compute class weights from dataset labels.
-    
-    Args:
-        labels: List of class labels from dataset
-        num_classes: Total number of classes
-        strategy: 'inverse_freq', 'inverse_sqrt', or 'effective_samples'
-    """
+    """Compute class weights from dataset labels."""
     counts = Counter(labels)
     class_counts = {i: counts.get(i, 0) for i in range(num_classes)}
     
@@ -481,4 +436,10 @@ def compute_class_weights_from_dataset(
     )
     
     return loss_fn.weights
+
+
+
+
+
+
 
