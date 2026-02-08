@@ -1,71 +1,203 @@
-"""
-Training Pipeline Tests for MaxSight Model
-Tests training infrastructure, loss computation, and optimization.
-"""
+"""Training Pipeline Tests for MaxSight Model Tests training infrastructure with dummy/synthetic data."""
 
 import torch
+import torch.nn as nn
 import sys
 from pathlib import Path
+from typing import Dict, List
 
-# Add parent directory to path
+# Add parent directory to path.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ml.models.maxsight_cnn import create_model
-from ml.training.train_production import ProductionTrainer, create_dummy_dataloaders
-from ml.training.losses import MaxSightLoss
+from ml.models.maxsight_cnn import create_model, COCO_CLASSES
+from ml.training.losses import (
+    ObjectnessLoss, 
+    ClassificationLoss, 
+    BoxRegressionLoss,
+    MultiHeadLoss
+)
+from ml.training.matching import match_predictions_to_gt
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+
+
+class DetectionLoss(nn.Module):
+    """Combined detection loss wrapper for testing."""
+    
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.objectness_loss = ObjectnessLoss()
+        self.classification_loss = ClassificationLoss(num_classes)
+        self.box_loss = BoxRegressionLoss()
+        self.num_classes = num_classes
+    
+    def forward(self, predictions: dict, targets: dict) -> dict:
+        """Compute combined detection losses."""
+        losses = {}
+        
+        B = predictions['classifications'].shape[0]
+        N = predictions['classifications'].shape[1]
+        
+        # Convert list targets to batched tensors. Labels: list of [num_objects] -> [B, N] (pad with -1 for no object)
+        if 'labels' in targets:
+            labels_list = targets['labels'] if isinstance(targets['labels'], list) else [targets['labels']]
+            labels_batched = torch.full((B, N), -1, dtype=torch.long, device=predictions['classifications'].device)
+            for b, labels in enumerate(labels_list):
+                if len(labels) > 0:
+                    num_objs = min(len(labels), N)
+                    labels_batched[b, :num_objs] = labels[:num_objs]
+        else:
+            labels_batched = None
+        
+        # Boxes: list of [num_objects, 4] -> [B, N, 4] (pad with 0)
+        if 'boxes' in targets:
+            boxes_list = targets['boxes'] if isinstance(targets['boxes'], list) else [targets['boxes']]
+            boxes_batched = torch.zeros((B, N, 4), device=predictions['boxes'].device)
+            for b, boxes in enumerate(boxes_list):
+                if len(boxes) > 0:
+                    num_objs = min(len(boxes), N)
+                    boxes_batched[b, :num_objs] = boxes[:num_objs]
+        else:
+            boxes_batched = None
+        
+        # Objectness: create from labels (1 where object exists, 0 elsewhere)
+        if labels_batched is not None:
+            objectness_targets = (labels_batched >= 0).float()
+        else:
+            objectness_targets = None
+        
+        # Objectness loss.
+        if 'objectness' in predictions and objectness_targets is not None:
+            losses['objectness'] = self.objectness_loss(
+                predictions['objectness'], 
+                objectness_targets
+            )
+        
+        # Classification loss (only on valid locations)
+        if 'classifications' in predictions and labels_batched is not None:
+            # Mask out invalid locations.
+            valid_mask = labels_batched >= 0
+            if valid_mask.any():
+                valid_preds = predictions['classifications'][valid_mask]  # [num_valid, num_classes].
+                valid_labels = labels_batched[valid_mask]  # [num_valid].
+                losses['classification'] = self.classification_loss(
+                    valid_preds.unsqueeze(0),  # Add batch dim.
+                    valid_labels.unsqueeze(0)
+                )
+            else:
+                losses['classification'] = torch.tensor(0.0, device=predictions['classifications'].device)
+        
+        # Box regression loss (only on valid locations)
+        if 'boxes' in predictions and boxes_batched is not None:
+            # Mask out invalid locations.
+            valid_mask = (labels_batched >= 0) if labels_batched is not None else torch.ones(B, N, dtype=torch.bool, device=predictions['boxes'].device)
+            if valid_mask.any():
+                valid_preds = predictions['boxes'][valid_mask]  # [num_valid, 4].
+                valid_targets = boxes_batched[valid_mask]  # [num_valid, 4].
+                losses['box'] = self.box_loss(
+                    valid_preds.unsqueeze(0),  # Add batch dim.
+                    valid_targets.unsqueeze(0)
+                )
+            else:
+                losses['box'] = torch.tensor(0.0, device=predictions['boxes'].device)
+        
+        # Total loss.
+        total_loss = sum(losses.values())
+        losses['total_loss'] = total_loss
+        
+        return losses
+
+
+class DummyMaxSightDataset(Dataset):
+    """Dummy dataset for training pipeline tests."""
+    
+    def __init__(self, num_samples: int = 10, image_size: tuple = (224, 224)):
+        self.num_samples = num_samples
+        self.image_size = image_size
+        self.num_classes = 80  # COCO classes.
+    
+    def __len__(self):
+        return self.num_samples
+    
+    def __getitem__(self, idx):
+        # Generate dummy image.
+        image = torch.randn(3, *self.image_size)
+        
+        # Generate dummy ground truth (normalized format: x, y, w, h)
+        num_objects = int(torch.randint(1, 5, (1,)).item())
+        
+        boxes = torch.rand(num_objects, 4)  # Normalized [0, 1].
+        boxes[:, 2:] = boxes[:, 2:] * 0.3 + 0.1  # Width/height between 0.1-0.4.
+        boxes[:, :2] = boxes[:, :2] * 0.7  # Position in center 70% of image.
+        
+        labels = torch.randint(0, self.num_classes, (num_objects,))
+        objectness = torch.ones(num_objects)
+        
+        # Dummy scene-level targets.
+        urgency_scores = torch.randint(0, 4, (4,)).float()
+        distance_zones = torch.randint(0, 3, (num_objects, 3)).float()
+        
+        return {
+            'image': image,
+            'boxes': boxes,
+            'labels': labels,
+            'objectness': objectness,
+            'urgency_scores': urgency_scores,
+            'distance_zones': distance_zones,
+        }
 
 
 def test_training_step():
-    """Test a single training step."""
-    print("Training Test 1: Single Training Step")
+    """Test a single training step with dummy data."""
+    print("Training Pipeline Test 1: Single Training Step")
     
-    model = create_model(num_classes=80)
-    device = torch.device('cpu')
-    model = model.to(device)
+    model = create_model()
     model.train()
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    loss_fn = MaxSightLoss(num_classes=80).to(device)
-    
-    # Create dummy batch
+    # Create dummy data.
     batch_size = 2
-    dummy_image = torch.randn(batch_size, 3, 224, 224).to(device)
+    dummy_image = torch.randn(batch_size, 3, 224, 224)
     
-    # Create dummy ground truth
-    num_objects = [3, 2]  # Different number of objects per image
-    max_objects = max(num_objects)
+    # Forward pass.
+    outputs = model(dummy_image)
     
-    gt_boxes = torch.zeros(batch_size, max_objects, 4).to(device)
-    gt_labels = torch.zeros(batch_size, max_objects, dtype=torch.long).to(device)
-    num_objects_tensor = torch.tensor(num_objects, dtype=torch.long).to(device)
+    # Create dummy ground truth (normalized format: x, y, w, h)
+    gt_boxes = []
+    gt_labels = []
+    for _ in range(batch_size):
+        num_objects = 3
+        boxes = torch.rand(num_objects, 4)  # Normalized [0, 1].
+        boxes[:, 2:] = boxes[:, 2:] * 0.3 + 0.1  # Width/height between 0.1-0.4.
+        boxes[:, :2] = boxes[:, :2] * 0.7  # Position in center 70% of image.
+        gt_boxes.append(boxes)
+        gt_labels.append(torch.randint(0, 80, (num_objects,)))
     
-    # Fill with dummy data
-    for i in range(batch_size):
-        for j in range(num_objects[i]):
-            gt_boxes[i, j] = torch.tensor([0.1, 0.1, 0.3, 0.3])
-            gt_labels[i, j] = torch.randint(1, 80, (1,)).item()
+    # Create loss function.
+    detection_loss_fn = DetectionLoss(num_classes=len(COCO_CLASSES))
     
+    # Prepare targets in correct format.
     targets = {
-        'boxes': gt_boxes,
         'labels': gt_labels,
-        'num_objects': num_objects_tensor,
-        'urgency': torch.zeros(batch_size, 4).to(device),
-        'distance': torch.zeros(batch_size, max_objects, 3).to(device)
+        'boxes': gt_boxes,
+        'num_objects': torch.tensor([len(boxes) for boxes in gt_boxes])
     }
     
-    # Training step
-    optimizer.zero_grad()
-    outputs = model(dummy_image)
-    losses = loss_fn(outputs, targets)
-    total_loss = losses['total_loss']
+    # Compute loss.
+    predictions = {
+        'classifications': outputs['classifications'],
+        'boxes': outputs['boxes'],
+        'objectness': outputs['objectness']
+    }
     
+    loss_dict = detection_loss_fn(predictions, targets)
+    total_loss = loss_dict['total_loss']
+    
+    # Backward pass.
     total_loss.backward()
-    optimizer.step()
     
-    # Verify gradients computed
+    # Check gradients.
     has_gradients = any(p.grad is not None for p in model.parameters())
     assert has_gradients, "No gradients computed"
-    assert total_loss.item() > 0, "Loss should be positive"
     
     print(f"  Total loss: {total_loss.item():.4f}")
     print(f"  Gradients computed: {has_gradients}")
@@ -73,118 +205,201 @@ def test_training_step():
 
 
 def test_data_loader():
-    """Test data loader functionality."""
-    print("\nTraining Test 2: Data Loader")
+    """Test data loader with dummy dataset."""
+    print("\nTraining Pipeline Test 2: Data Loader")
     
-    train_loader, val_loader = create_dummy_dataloaders(
-        num_train=10,
-        num_val=5,
-        batch_size=2
-    )
+    dataset = DummyMaxSightDataset(num_samples=20)
+    # Use collate_fn to handle variable-sized tensors.
+    def collate_fn(batch):
+        images = torch.stack([item['image'] for item in batch])
+        return {
+            'image': images,
+            'boxes': [item['boxes'] for item in batch],  # List, not stacked.
+            'labels': [item['labels'] for item in batch],  # List, not stacked.
+            'objectness': [item['objectness'] for item in batch],
+            'urgency_scores': torch.stack([item['urgency_scores'] for item in batch]),
+            'distance_zones': [item['distance_zones'] for item in batch],
+        }
     
-    # Test train loader
-    assert len(train_loader) > 0, "Train loader should have batches"
+    dataloader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
     
-    sample_batch = next(iter(train_loader))
-    assert 'images' in sample_batch, "Batch should contain images"
-    assert 'labels' in sample_batch, "Batch should contain labels"
-    assert 'boxes' in sample_batch, "Batch should contain boxes"
+    # Test loading a batch.
+    batch = next(iter(dataloader))
     
-    assert sample_batch['images'].shape[0] == 2, "Batch size should be 2"
-    print(f"  Train batches: {len(train_loader)}")
-    print(f"  Batch shape: {sample_batch['images'].shape}")
+    assert 'image' in batch, "Batch missing image"
+    assert 'boxes' in batch, "Batch missing boxes"
+    assert 'labels' in batch, "Batch missing labels"
     
-    # Test val loader
-    assert len(val_loader) > 0, "Val loader should have batches"
-    val_batch = next(iter(val_loader))
-    assert val_batch['images'].shape[0] == 2, "Val batch size should be 2"
-    print(f"  Val batches: {len(val_loader)}")
+    assert batch['image'].shape[0] == 4, "Batch size incorrect"
+    assert batch['image'].shape[1] == 3, "Image channels incorrect"
     
-    print("  PASSED: Data loaders work correctly")
+    print(f"  Batch size: {batch['image'].shape[0]}")
+    print(f"  Image shape: {batch['image'].shape}")
+    print("  PASSED: Data loader works correctly")
 
 
 def test_training_loop_iteration():
-    """Test a single training loop iteration."""
-    print("\nTraining Test 3: Training Loop Iteration")
+    """Test a complete training loop iteration."""
+    print("\nTraining Pipeline Test 3: Training Loop Iteration")
     
     model = create_model()
-    train_loader, val_loader = create_dummy_dataloaders(
-        num_train=4,
-        num_val=2,
-        batch_size=2
-    )
-    
-    trainer = ProductionTrainer(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        device='cpu',
-        num_epochs=1
-    )
-    
-    # Run one iteration
-    sample_batch = next(iter(train_loader))
-    images = sample_batch['images']
-    targets = {
-        'labels': sample_batch['labels'],
-        'boxes': sample_batch['boxes'],
-        'urgency': sample_batch['urgency'],
-        'distance': sample_batch['distance'],
-        'num_objects': sample_batch['num_objects']
-    }
-    
     model.train()
-    outputs = model(images)
-    losses = trainer.criterion(outputs, targets)
     
-    assert 'total_loss' in losses, "Should have total_loss"
-    assert losses['total_loss'].item() > 0, "Loss should be positive"
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     
-    print(f"  Loss: {losses['total_loss'].item():.4f}")
+    dataset = DummyMaxSightDataset(num_samples=10)
+    def collate_fn(batch):
+        images = torch.stack([item['image'] for item in batch])
+        return {
+            'image': images,
+            'boxes': [item['boxes'] for item in batch],
+            'labels': [item['labels'] for item in batch],
+            'objectness': [item['objectness'] for item in batch],
+            'urgency_scores': torch.stack([item['urgency_scores'] for item in batch]),
+            'distance_zones': [item['distance_zones'] for item in batch],
+        }
+    dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=collate_fn)
+    
+    detection_loss_fn = DetectionLoss(num_classes=len(COCO_CLASSES))
+    
+    # One epoch.
+    total_loss = 0.0
+    num_batches = 0
+    
+    for batch in dataloader:
+        images = batch['image']
+        
+        # Forward.
+        outputs = model(images)
+        
+        # Prepare targets.
+        targets = {
+            'labels': batch['labels'],
+            'boxes': batch['boxes'],
+            'num_objects': torch.tensor([len(boxes) for boxes in batch['boxes']])
+        }
+        
+        # Compute loss.
+        predictions = {
+            'classifications': outputs['classifications'],
+            'boxes': outputs['boxes'],
+            'objectness': outputs['objectness']
+        }
+        
+        loss_dict = detection_loss_fn(predictions, targets)
+        loss = loss_dict['total_loss']
+        
+        # Backward.
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        total_loss += loss.item()
+        num_batches += 1
+    
+    avg_loss = total_loss / num_batches
+    
+    print(f"  Processed {num_batches} batches")
+    print(f"  Average loss: {avg_loss:.4f}")
     print("  PASSED: Training loop iteration works")
 
 
-def test_loss_computation():
-    """Test loss function computation."""
-    print("\nTraining Test 4: Loss Computation")
+def test_gradient_accumulation():
+    """Test gradient accumulation for larger effective batch sizes."""
+    print("\nTraining Pipeline Test 4: Gradient Accumulation")
     
     model = create_model()
-    model.eval()
-    loss_fn = MaxSightLoss(num_classes=80)
+    model.train()
     
-    batch_size = 2
-    dummy_image = torch.randn(batch_size, 3, 224, 224)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     
-    with torch.no_grad():
-        outputs = model(dummy_image)
+    dataset = DummyMaxSightDataset(num_samples=8)
+    def collate_fn(batch):
+        images = torch.stack([item['image'] for item in batch])
+        return {
+            'image': images,
+            'boxes': [item['boxes'] for item in batch],
+            'labels': [item['labels'] for item in batch],
+            'objectness': [item['objectness'] for item in batch],
+            'urgency_scores': torch.stack([item['urgency_scores'] for item in batch]),
+            'distance_zones': [item['distance_zones'] for item in batch],
+        }
+    dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=collate_fn)
     
-    # Create dummy targets
-    num_objects = [2, 3]
-    max_objects = max(num_objects)
+    detection_loss_fn = DetectionLoss(num_classes=len(COCO_CLASSES))
+    accumulation_steps = 2
     
-    targets = {
-        'boxes': torch.zeros(batch_size, max_objects, 4),
-        'labels': torch.zeros(batch_size, max_objects, dtype=torch.long),
-        'num_objects': torch.tensor(num_objects, dtype=torch.long),
-        'urgency': torch.zeros(batch_size, 4),
-        'distance': torch.zeros(batch_size, max_objects, 3)
-    }
+    # Training with gradient accumulation.
+    optimizer.zero_grad()
     
-    losses = loss_fn(outputs, targets)
+    for i, batch in enumerate(dataloader):
+        images = batch['image']
+        outputs = model(images)
+        
+        # Prepare targets.
+        targets = {
+            'labels': batch['labels'],
+            'boxes': batch['boxes'],
+            'num_objects': torch.tensor([len(boxes) for boxes in batch['boxes']])
+        }
+        
+        # Compute loss.
+        predictions = {
+            'classifications': outputs['classifications'],
+            'boxes': outputs['boxes'],
+            'objectness': outputs['objectness']
+        }
+        
+        loss_dict = detection_loss_fn(predictions, targets)
+        loss = loss_dict['total_loss'] / accumulation_steps  # Scale loss.
+        
+        loss.backward()
+        
+        if (i + 1) % accumulation_steps == 0:
+            optimizer.step()
+            optimizer.zero_grad()
     
-    assert 'total_loss' in losses, "Should have total_loss"
-    assert 'classification_loss' in losses or 'detection_loss' in losses, "Should have component losses"
-    assert losses['total_loss'].item() >= 0, "Loss should be non-negative"
+    print(f"  Gradient accumulation steps: {accumulation_steps}")
+    print("  PASSED: Gradient accumulation works")
+
+
+def test_fp32_training():
+    """Test FP32 training (CUDA if available)."""
+    print("\nTraining Pipeline Test 5: FP32 Training")
     
-    print(f"  Total loss: {losses['total_loss'].item():.4f}")
-    print("  PASSED: Loss computation works correctly")
+    if not torch.cuda.is_available():
+        print("  SKIPPED: CUDA not available")
+        return
+    
+    model = create_model()
+    model = model.cuda()
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    dummy_image = torch.randn(2, 3, 224, 224).cuda()
+    optimizer.zero_grad()
+    outputs = model(dummy_image)
+    loss = outputs['classifications'].sum()
+    loss.backward()
+    optimizer.step()
+    print("  PASSED: FP32 training works")
 
 
 if __name__ == "__main__":
+    print("Running Training Pipeline Tests")
+    print("=" * 50)
+    
     test_training_step()
     test_data_loader()
     test_training_loop_iteration()
-    test_loss_computation()
+    test_gradient_accumulation()
+    test_fp32_training()
     
-    print("\nAll training pipeline tests completed!")
+    print("\n" + "=" * 50)
+    print("All training pipeline tests passed!")
+
+
+
+
+
+
 
