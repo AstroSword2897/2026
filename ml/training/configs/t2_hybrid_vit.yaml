@@ -1,0 +1,87 @@
+# MaxSight Training Configuration: T2_HYBRID_VIT
+# Hybrid CNN-ViT backbone, Tier 1 + Tier 2 heads, Dynamic Convolution
+# Target: Cloud GPU training, ~210M parameters
+
+# Model Configuration
+model:
+  tier: "T2_HYBRID_VIT"
+  num_classes: 80
+  use_se_attention: true
+  use_cbam_attention: true
+  use_hybrid_backbone: true  # Hybrid CNN-ViT
+  use_dynamic_conv: true
+  use_cross_task_attention: false
+  use_cross_modal_attention: false
+  use_temporal_modeling: false
+  use_retrieval: false
+
+# Data Configuration
+data:
+  train_annotation_file: "datasets/cleaned_splits/train.json"
+  val_annotation_file: "datasets/cleaned_splits/val.json"
+  test_annotation_file: "datasets/cleaned_splits/test.json"
+  image_dir: "datasets/coco_raw"
+  audio_dir: null
+  batch_size: 16
+  num_workers: 8  # Can push to 10-12 on A100/H100 with local storage
+  pin_memory: true
+  max_objects: 10
+  condition_mode: null
+  apply_lighting_augmentation: true
+  use_weighted_sampling: false
+
+# Training Configuration
+# LR formula: 1e-4 * sqrt(32/32) * sqrt(200M/210M) ≈ 8e-5
+# Sweet spot for 210M params, batch 32, AdamW
+training:
+  num_epochs: 150
+  learning_rate: 8.0e-5
+  weight_decay: 0.035  # Capped for ViT-heavy model (detection heads over-regularize faster)
+  # Note: momentum removed - AdamW doesn't use it
+  optimizer: "AdamW"
+  scheduler: "cosine"
+  min_lr: 1e-6
+  warmup_epochs: 12  # Shorter than T5 (no temporal, no cross-task attention)
+  gradient_clip_norm: 1.0
+  mixed_precision: false  # FP32 only
+  accumulate_grad_batches: 2  # Effective batch size 32
+
+# Loss Configuration
+# Rebalanced: regression still dominant but not monopolistic
+# Tier-2 accessibility heads get meaningful gradient signal
+loss:
+  use_gradnorm: true
+  loss_weights:
+    detection: 1.0
+    classification: 1.1
+    box_regression: 3.5  # Still important, not tyrannical
+    distance: 0.7
+    urgency: 1.3  # Reduced from 1.4 (tends to overfit fast in therapy-oriented datasets)
+    motion: 0.5
+    therapy_state: 0.7
+    roi_priority: 0.4
+    navigation_difficulty: 0.6
+
+# Validation Configuration
+validation:
+  val_check_interval: 0.5
+  save_top_k: 3
+  monitor: "val_loss"
+  mode: "min"
+
+# Checkpointing
+checkpoint:
+  save_dir: "checkpoints/t2_hybrid_vit"
+  save_last: true
+  save_every_n_epochs: 10
+
+# Logging
+logging:
+  log_dir: "logs/t2_hybrid_vit"
+  log_every_n_steps: 50
+  tensorboard: true
+
+# Device
+device: "auto"
+seed: 42
+
