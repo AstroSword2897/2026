@@ -74,15 +74,29 @@ logs/
 .env
 .env.local
 
-#Model
+# Model / runtime
 Miniforge3-MacOSX-arm64.sh
 
+# Generated outputs and artifacts (do not commit)
+exports/
+*.mlpackage
+*.onnx
+baseline_output*
+production_rehearsal*
+throughput_results*
+throughput_results.txt
+forward_pass_paths.md
+benchmark_results.json
+quantization_summary.json
+.coverage
+test_results/
+test_images/
+
+# Legacy / optional attention modules (unused in current pipeline)
 ml/models/attention/cbam_attention.py
 ml/models/attention/cross_modal_attention.py
 ml/models/attention/cross_task_attention.py
-ml/utils/preprocessing.py
-ml/utils/output_scheduler.py
-ml/training/train_loop.py
-ml/training/export.py
-ml/data/create_accessibility_dataset.py
-ml/data/advanced_augmentation.py
+
+# Local sync helpers (do not commit)
+commit_msg_for_path.py
+sync_important.sh
