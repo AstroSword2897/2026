@@ -2842,5 +2842,4 @@ class CustomAccessibilityLoss(BaseLoss):
         
         total_loss = self.alpha * cls_loss + (1 - self.alpha) * reg_loss
         return total_loss
-# This line is used because of stubborn git commands
 ## 
