@@ -2,12 +2,10 @@
 
 **Production-Grade Accessibility System** | **Multi-Task Deep Learning for Environmental Understanding**
 
-**Last Updated**: 2026-02  
-**Status**: Production-ready training and data pipeline. Run `scripts/gather_training_data.py` then `scripts/train_maxsight.py`. See **docs/status.md** for current status.
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
 1. [Project Overview & Goals](#-project-overview--goals)
 2. [Actions Taken - Complete Development History](#-actions-taken---complete-development-history)
@@ -27,12 +25,6 @@
 
 ---
 
-## 🎯 Project Overview & Goals
-
-### Primary Mission
-
-MaxSight 3.0 is a **production-grade accessibility application** that helps users with vision and hearing disabilities navigate and understand their environment through advanced computer vision and multimodal feedback. The system removes barriers by providing the same rich environmental information that sighted people process automatically.
-
 ### Core Problem Statement
 
 **"What are ways that those who cannot see or hear be able to interact with the world like those who can?"**
@@ -46,12 +38,10 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 ### What Makes MaxSight Different
 
-**Standard object detectors** answer: "What is this?" and "Where is it?"
-
 **MaxSight 3.0** answers:
 - **WHAT**: Object class (door, stairs, vehicle, person) - 91 COCO classes + 200+ accessibility classes
 - **WHERE**: Precise bounding box position (for directional cues)
-- **HOW FAR**: Distance zones (near/medium/far) + precise depth estimation
+- **HOW FAR**: Distance zones (near/medium/far)
 - **HOW URGENT**: Urgency level (safe/caution/warning/danger) for safety
 - **HOW FINDABLE**: Object findability scores (for users with low vision)
 - **SCENE CONTEXT**: Natural language scene descriptions
@@ -63,25 +53,25 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 ### Project Goals
 
 #### Short-Term Goals (Completed)
-- ✅ Complete architecture implementation (Phases 0-9)
-- ✅ All tests passing (163/163)
-- ✅ Training infrastructure ready
-- ✅ Data pipeline established
-- ✅ Hyperparameter configurations for all tiers
+- Complete architecture implementation (Phases 0-9)
+- All tests passing (163/163)
+- Training infrastructure ready
+- Data pipeline established
+- Hyperparameter configurations for all tiers
 
 #### Medium-Term Goals (In Progress)
-- ✅ Data gathering script and train/val/test splits (see [Requirements before training](#requirements-before-training))
-- 🔄 Full training runs (T0 baseline; use cloud GPU for production scale)
-- 🔄 Performance benchmarking (see `ml/training/benchmark.py` and `pytest tests/`)
-- 🔄 Model export (JIT/ONNX/CoreML; see `python -m ml.training.export --help`)
+- Data gathering script and train/val/test splits (see [Requirements before training](#requirements-before-training))
+- Full training runs (T0 baseline; use cloud GPU for production scale)
+- Performance benchmarking (see `ml/training/benchmark.py` and `pytest tests/`)
+- Model export (JIT/ONNX/CoreML; see `python -m ml.training.export --help`)
 
 #### Long-Term Goals
-- 📋 Production training (all tiers T0-T5)
-- 📋 Transfer learning (T2 → T5)
-- 📋 Mobile deployment (iOS CoreML)
-- 📋 Real-world testing with users
-- 📋 Performance optimization
-- 📋 Accessibility certification
+- Production training (all tiers T0-T5)
+- Transfer learning (T2 → T5)
+- Mobile deployment (iOS CoreML)
+- Real-world testing with users
+- Performance optimization
+- Accessibility certification
 
 ### Model Statistics
 
@@ -95,11 +85,8 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 - **Task Heads**: 30+ specialized heads
 - **Export Formats**: 3 (CoreML, ONNX, ExecuTorch)
 
----
 
-## 📋 Actions Taken - Complete Development History
-
-### Phase 0: Backbone Networks ✅
+### Phase 0: Backbone Networks
 
 **Actions**:
 - Implemented ResNet50+FPN backbone for Stage A (safety-critical)
@@ -116,7 +103,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: Foundation for two-stage inference pipeline established.
 
-### Phase 1: Multimodal Fusion ✅
+### Phase 1: Multimodal Fusion
 
 **Actions**:
 - Implemented audio-visual fusion with attention mechanisms
@@ -131,7 +118,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: System can process both visual and audio information simultaneously.
 
-### Phase 2: Task Heads ✅
+### Phase 2: Task Heads
 
 **Actions**:
 - Implemented 30+ specialized task heads organized by criticality tiers
@@ -147,7 +134,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: Comprehensive multi-task learning system that addresses all accessibility needs.
 
-### Phase 3: Retrieval System ✅
+### Phase 3: Retrieval System
 
 **Actions**:
 - Implemented FAISS-based two-stage retrieval system
@@ -163,7 +150,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: System can leverage similar scenes for context without compromising safety.
 
-### Phase 4: Knowledge Integration ✅
+### Phase 4: Knowledge Integration
 
 **Actions**:
 - Implemented Scene Graph Encoder for spatial/semantic relations
@@ -179,7 +166,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: System understands object relationships, not just individual objects.
 
-### Phase 5: Training Infrastructure ✅
+### Phase 5: Training Infrastructure
 
 **Actions**:
 - Implemented production-grade training loop with resume capability
@@ -200,7 +187,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: Production-ready training system that can handle complex multi-task learning.
 
-### Phase 6: Personalization ✅
+### Phase 6: Personalization
 
 **Actions**:
 - Implemented Personalization Head for user-specific adaptations
@@ -211,11 +198,10 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 **Results**:
 - User-specific model adaptations
 - Preference-based output scheduling
-- Online learning support (future integration)
 
 **Impact**: System can adapt to individual user needs and preferences.
 
-### Phase 7: Optimization ✅
+### Phase 7: Optimization
 
 **Actions**:
 - Implemented quantization (INT8) for mobile deployment
@@ -230,7 +216,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: System can run on mobile devices with acceptable performance.
 
-### Phase 8: Simulator ✅
+### Phase 8: Simulator 
 
 **Actions**:
 - Implemented complete web-based simulator (Flask)
@@ -249,7 +235,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: Complete product simulation without requiring iOS app.
 
-### Phase 9: Evaluation ✅
+### Phase 9: Evaluation 
 
 **Actions**:
 - Implemented comprehensive evaluation metrics
@@ -309,8 +295,6 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 ---
 
-## 🏗️ System Architecture - Deep Dive
-
 ### Two-Stage Inference Pipeline
 
 The core architectural decision is the **two-stage inference pipeline** that separates safety-critical predictions from enhancement features.
@@ -344,8 +328,6 @@ The core architectural decision is the **two-stage inference pipeline** that sep
 
 #### Stage B: Context Pass (opportunistic, tier-dependent)
 
-**Purpose**: Provide rich context and enhancement features when time permits.
-
 **Backbone**: Hybrid CNN-ViT (T2+) + Temporal (T5+)
 - Hybrid CNN-ViT: Combines CNN efficiency with ViT global attention
 - Temporal: ConvLSTM + TimeSformer for temporal modeling (T5 only)
@@ -359,15 +341,9 @@ The core architectural decision is the **two-stage inference pipeline** that sep
 - Can be skipped if Stage A latency/uncertainty thresholds exceeded
 - Graceful degradation: If Stage B fails, Stage A results still returned
 - Asynchronous: Some Tier 3 heads run in background threads
-
 ### Tiered Head Architecture
-
 Heads are organized into 3 tiers by criticality:
-
 #### Tier 1: Safety-Critical (Never Disabled)
-
-| Head | Purpose | Output Shape | Execution |
-|------|---------|--------------|-----------|
 | **Objectness** | Is there an object? | `[B, H*W]` | Every frame |
 | **Classification** | What object? | `[B, H*W, 91]` | Every frame |
 | **Box Regression** | Where is it? | `[B, H*W, 4]` | Every frame |
@@ -383,8 +359,6 @@ Heads are organized into 3 tiers by criticality:
 
 #### Tier 2: Navigation & Context (Can Degrade)
 
-| Head | Purpose | Output Shape | Execution |
-|------|---------|--------------|-----------|
 | **Motion** | Object movement | `[B, 2, H, W]` | Every N frames |
 | **Therapy State** | Fatigue, depth, contrast | Dict | Every N frames |
 | **ROI Priority** | Region prioritization | `[B, N]` | Every N frames |
@@ -398,8 +372,6 @@ Heads are organized into 3 tiers by criticality:
 
 #### Tier 3: Enhancement & Therapy (Optional)
 
-| Head | Purpose | Output Shape | Execution |
-|------|---------|--------------|-----------|
 | **Scene Description** | Natural language | List[str] | Background |
 | **OCR** | Text detection/recognition | Dict | Background |
 | **Scene Graph** | Spatial/semantic relations | Dict | Background |
@@ -418,8 +390,6 @@ Heads are organized into 3 tiers by criticality:
 
 The system supports progressive tier enablement:
 
-| Tier | Name | Features | Parameters | Device |
-|------|------|----------|------------|--------|
 | **T0** | BASELINE_CNN | ResNet50+FPN, Tier 1 heads | ~29M | Cloud GPU |
 | **T1** | EDGE | + Attention, Tier 2 heads | ~50M | Cloud GPU |
 | **T2** | HYBRID_VIT | + Hybrid CNN-ViT, Motion, Therapy | ~210M | Cloud GPU |
@@ -444,10 +414,10 @@ The system supports progressive tier enablement:
 3. **Temporal Only in Stage B**: Temporal processing uses Stage A features as input
    - **Mathematical Guarantee**: `temporal_features = TemporalEncoder(features_A)`
    - **Implementation**: Temporal encoder receives Stage A FPN features, not raw images
-   - **Why**: Temporal processing is expensive. Using Stage A features (already extracted) is more efficient than re-processing raw images.
+   - **Why**: Temporal processing is expensive. Using Stage A features is more efficient than re-processing raw images.
 
 4. **Retrieval is Async**: Non-blocking, advisory only
-   - **Mathematical Guarantee**: `retrieval_output = async_retrieval(query)` (non-blocking)
+   - **Mathematical Guarantee**: `retrieval_output = async_retrieval(query)`
    - **Implementation**: Retrieval runs in background thread, never blocks inference
    - **Why**: Retrieval can take 100-500ms. Making it async ensures it never delays safety-critical predictions.
 
@@ -654,95 +624,9 @@ Motion_dir = atan2(v, u)  # [B, H, W] (radians)
 
 ---
 
-## 🔄 Data Flow & Processing Pipeline
+## Data Flow & Processing Pipeline
 
 ### Complete Data Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        INPUT LAYER                              │
-│  Images [B, 3, 224, 224] + Audio [B, 128] (optional)          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    PREPROCESSING                                │
-│  - Normalization (ImageNet stats)                              │
-│  - Condition-specific adaptations (if enabled)                 │
-│  - Audio feature extraction (MFCC)                             │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    STAGE A BACKBONE                             │
-│  ResNet50 + FPN → fpn_features, fused_features, scene_context  │
-│  Latency: <150ms target                                         │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    STAGE A HEADS (Tier 1)                       │
-│  - Objectness [B, H*W]                                         │
-│  - Classification [B, H*W, 91]                                 │
-│  - Box Regression [B, H*W, 4]                                  │
-│  - Distance Zones [B, H*W, 3]                                  │
-│  - Urgency [B, 4]                                              │
-│  - Uncertainty [B, 1]                                          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-                    ┌────────┴────────┐
-                    │  DECISION POINT │
-                    │  latency >200ms │
-                    │  OR uncertainty │
-                    │  >0.7?          │
-                    └────────┬────────┘
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-                ▼                         ▼
-        ┌──────────────┐         ┌──────────────┐
-        │  SKIP STAGE B │         │  RUN STAGE B │
-        │  Return Stage │         │  (if tier ≥T2)│
-        │  A only       │         │               │
-        └──────────────┘         └───────┬───────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    STAGE B BACKBONE           │
-                          │  Hybrid CNN-ViT (T2+)         │
-                          │  + Temporal (T5+)             │
-                          └───────────────┬───────────────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    STAGE B HEADS (Tier 2/3)   │
-                          │  - Motion                      │
-                          │  - Therapy State               │
-                          │  - Scene Graph                 │
-                          │  - OCR                         │
-                          │  - Scene Description           │
-                          │  - Sound Events                │
-                          │  - Personalization             │
-                          │  - Predictive Alerts            │
-                          └───────────────┬───────────────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    ASYNC RETRIEVAL (Tier 3)   │
-                          │  - Knowledge augmentation      │
-                          │  - Scene similarity search     │
-                          │  - Non-blocking               │
-                          └───────────────┬───────────────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    OUTPUT ASSEMBLY            │
-                          │  Dictionary with 30+ outputs  │
-                          │  + metadata                    │
-                          └───────────────────────────────┘
-```
-
 ### Data Pipeline Components
 
 #### 1. Dataset Loading (`ml/data/dataset.py`)
@@ -1246,9 +1130,8 @@ def create_efficient_dataloader(dataset, batch_size, num_workers=8):
     )
 
 # Why num_workers=8?
-# - Model is compute-bound (GPU waits for data)
-# - 8 workers keep GPU fed during forward/backward pass
-# - Trade-off: More memory usage, but 2-3x throughput improvement
+# - GPU waits for data
+# - Trade-off: More memory usage, but 2-3x impact throughput run
 ```
 
 **Configuration Details**:
@@ -1279,7 +1162,7 @@ def create_efficient_dataloader(dataset, batch_size, num_workers=8):
 
 ---
 
-## 🎓 Training Flow & Hyperparameter Strategy
+## Training Flow & Hyperparameter Strategy
 
 ### Mathematical Foundations
 
@@ -1542,70 +1425,10 @@ Where:
 - FFN = feedforward network
 ```
 
-### Training Pipeline Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    DATA LOADING                                 │
-│  MaxSightDataset → DataLoader → Batches                        │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    FORWARD PASS                                  │
-│  Model(images, audio_features) → outputs                        │
-│  All heads predict simultaneously                                │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    LOSS COMPUTATION                             │
-│  Per-head losses → GradNorm balancing → Total loss              │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    BACKWARD PASS                                │
-│  loss.backward() → Gradients computed                           │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    GRADIENT CLIPPING                            │
-│  clip_grad_norm_(1.0) → Prevents gradient explosion            │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    OPTIMIZER STEP                                │
-│  optimizer.step() → Model weights updated                       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    SCHEDULER STEP                               │
-│  scheduler.step() → Learning rate updated                        │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    VALIDATION (every N batches)                 │
-│  Metrics computed: mAP, precision, recall, F1                   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    CHECKPOINTING (every N epochs)               │
-│  Save model, optimizer, scheduler, EMA state                    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ### Hyperparameter Strategy
 
 #### Learning Rate Scaling by Model Size
 
-| Tier | Parameters | Learning Rate | Rationale |
-|------|------------|---------------|------------|
 | T0 | 29M | 1.5e-3 | Can tolerate higher LR |
 | T1 | 50M | 1.2e-4 | Moderate for attention |
 | T2 | 210M | 8.0e-5 | Hybrid architecture |
@@ -1872,7 +1695,7 @@ lr_groups = {
 
 **What to Transfer** - Detailed Mapping:
 
-**✅ Transfer (Copy Weights)**:
+**Transfer**:
 ```python
 # 1. CNN Backbone (ResNet50)
 T5_model.cnn_stem.load_state_dict(T2_model.cnn_stem.state_dict())
@@ -1900,8 +1723,7 @@ T5_model.distance_head.load_state_dict(T2_model.distance_head.state_dict())
 T5_model.urgency_head.load_state_dict(T2_model.urgency_head.state_dict())
 ```
 
-**❌ DO NOT Transfer (Random Init)**:
-```python
+
 # 1. Temporal Modules (new in T5)
 T5_model.temporal_encoder = ConvLSTM(...)  # Random init
 T5_model.timesformer = TimeSformer(...)     # Random init
@@ -1915,7 +1737,6 @@ T5_model.cross_modal_attention = CrossModalAttention(...)  # Random init
 
 # 4. New T5 Heads
 T5_model.predictive_alert_head = PredictiveAlertHead(...)  # Random init
-```
 
 **Freeze Schedule** - Detailed Implementation:
 
@@ -1926,7 +1747,6 @@ for param in T5_model.cnn_stem.parameters():
     param.requires_grad = False
 for param in T5_model.cnn_layer1.parameters():
     param.requires_grad = False
-# ... (all CNN layers)
 for param in T5_model.fpn.parameters():
     param.requires_grad = False
 for param in T5_model.vit.parameters():
@@ -2126,81 +1946,13 @@ def get_loss_weights_for_epoch(epoch):
 - **Late Phase (25-40)**: Adds therapy/urgency tasks that depend on both detection and navigation
 - **Final Phase (40+)**: Enables all tasks once representation is ready
 
-**Expected Behavior**:
+**Behavior**:
 - **Epochs 0-5**: Metrics noisy, loss spikes (temporal heads learning)
 - **Epochs 5-15**: Detection stabilizes (detection heads adapting)
 - **Epochs 15-30**: Navigation loss drops (ViT adapting)
 - **Epochs 30-45**: Temporal heads wake up (full ViT + temporal)
 - **Epochs 45-70**: T5 surpasses T2 (full model training)
 - **Epochs 70+**: Diminishing returns (fine-tuning)
-
----
-
-## ⚡ Inference Flow & Real-Time Processing
-
-### Real-Time Inference Pipeline
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    FRAME CAPTURE                                │
-│  Camera → Image [3, 224, 224] + Audio [128] (optional)        │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    PREPROCESSING                                │
-│  - Normalization                                                │
-│  - Condition-specific adaptations (if enabled)                 │
-│  - Audio feature extraction (if audio available)               │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    STAGE A INFERENCE                            │
-│  ResNet50+FPN → Tier 1 Heads                                    │
-│  Target: <150ms                                                 │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-                    ┌────────┴────────┐
-                    │  DECISION POINT │
-                    │  latency >200ms │
-                    │  OR uncertainty │
-                    │  >0.7?          │
-                    └────────┬────────┘
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-                ▼                         ▼
-        ┌──────────────┐         ┌──────────────┐
-        │  SKIP STAGE B │         │  RUN STAGE B │
-        │  Return Stage │         │  (if tier ≥T2)│
-        │  A only       │         │               │
-        └──────────────┘         └───────┬───────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    STAGE B INFERENCE          │
-                          │  Hybrid CNN-ViT → Tier 2/3    │
-                          │  Target: <500ms                │
-                          └───────────────┬───────────────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    OUTPUT PROCESSING           │
-                          │  - Format outputs              │
-                          │  - Apply thresholds            │
-                          │  - Generate descriptions       │
-                          └───────────────┬───────────────┘
-                                          │
-                                          ▼
-                          ┌───────────────────────────────┐
-                          │    MULTIMODAL FEEDBACK         │
-                          │  - Visual overlays             │
-                          │  - Voice announcements    │
-                          │  - Haptic feedback            │
-                          └───────────────────────────────┘
-```
 
 ### Performance Targets
 
@@ -2223,11 +1975,11 @@ def get_loss_weights_for_epoch(epoch):
 
 ---
 
-## 📊 Effectiveness & Results
+## Effectiveness & Results
 
 ### Test Results
 
-**Test Suite Status**: ✅ **163 tests passing** | 8 skipped (expected, environment-specific) | 0 failing
+**Test Suite Status**: **163 tests passing** | 8 skipped (expected, environment-specific) | 0 failing
 
 **Test Coverage**:
 - Phase 0 (Backbone): All tests passing
@@ -2251,19 +2003,19 @@ def get_loss_weights_for_epoch(epoch):
 ### Training Results
 
 **Smoke Training** (Proof of Life):
-- ✅ **Loss decreased**: 0.7246 → 0.6013 (2 epochs, 5 batches)
-- ✅ Forward pass validated across all tiers (T0-T5)
-- ✅ GradNorm integration working
-- ✅ Checkpointing/resume working
+- **Loss decreased**: 0.7246 → 0.6013 (2 epochs, 5 batches)
+- Forward pass validated across all tiers (T0-T5)
+- GradNorm integration working
+- Checkpointing/resume working
 
 **Training Framework Status**:
-- ✅ Production training loop implemented
-- ✅ Resume capability verified
-- ✅ EMA state dict interface fixed
-- ✅ Optimizer state preservation verified
-- ✅ Validation metric safety improved
-- ✅ GradNorm integration enhanced
-- ✅ MPS support added
+- Production training loop implemented
+- Resume capability verified
+- EMA state dict interface fixed
+- Optimizer state preservation verified
+- Validation metric safety improved
+- GradNorm integration enhanced
+- MPS support added
 
 ### Model Performance
 
@@ -2274,32 +2026,32 @@ def get_loss_weights_for_epoch(epoch):
 - **Export**: CoreML, ONNX, ExecuTorch formats supported
 
 **Architecture Validation**:
-- ✅ Two-stage inference pipeline verified
-- ✅ Tier-based head execution verified
-- ✅ Safety-first guarantees verified
-- ✅ Graceful degradation verified
+- Two-stage inference pipeline verified
+- Tier-based head execution verified
+- Safety-first guarantees verified
+- Graceful degradation verified
 
 ### Component Effectiveness
 
 **Backbone Networks**:
-- ✅ ResNet50+FPN: Fast, predictable (<150ms)
-- ✅ Hybrid CNN-ViT: Rich context features
-- ✅ Temporal Encoder: Motion tracking working
+- ResNet50+FPN: Fast, predictable (<150ms)
+- Hybrid CNN-ViT: Rich context features
+- Temporal Encoder: Motion tracking working
 
 **Task Heads**:
-- ✅ All 30+ heads validated
-- ✅ Tier-based execution working
-- ✅ Condition-specific adaptations working
+- All 30+ heads validated
+- Tier-based execution working
+- Condition-specific adaptations working
 
 **Retrieval System**:
-- ✅ Two-stage retrieval working
-- ✅ Async retrieval non-blocking
-- ✅ Advisory-only design verified
+- Two-stage retrieval working
+- Async retrieval non-blocking
+- Advisory-only design verified
 
 **Training Infrastructure**:
-- ✅ GradNorm preventing gradient warfare
-- ✅ Multi-task learning working
-- ✅ Self-supervised pretraining ready
+- GradNorm preventing gradient warfare
+- Multi-task learning working
+- Self-supervised pretraining ready
 
 ---
 
@@ -2339,108 +2091,7 @@ def get_loss_weights_for_epoch(epoch):
 - **Flask**: 3.0.0+ (web framework)
 - **Flask-CORS**: 4.0.0+ (CORS support)
 
-### Repository Structure
-
-```
-2026-Prototype/
-├── ml/                          # Core ML code
-│   ├── models/                  # Model architectures
-│   │   ├── maxsight_cnn.py      # Main CNN (250M params, T2 tier)
-│   │   ├── heads/               # 30+ specialized output heads
-│   │   ├── backbone/            # ResNet50, Hybrid CNN-ViT, ViT
-│   │   ├── fusion/              # Multi-modal fusion
-│   │   ├── temporal/           # ConvLSTM, TimeSformer
-│   │   └── scene_graph/        # Scene graph encoding
-│   │
-│   ├── training/               # Training infrastructure
-│   │   ├── train_loop.py       # Production training loop
-│   │   ├── losses.py           # Per-head loss functions
-│   │   ├── metrics.py          # Evaluation metrics
-│   │   ├── task_balancing.py   # GradNorm, PCGrad
-│   │   ├── export.py           # CoreML, ExecuTorch, ONNX, JIT
-│   │   ├── transfer_learning.py # T2→T5 transfer logic
-│   │   └── configs/            # YAML configs for all tiers
-│   │
-│   ├── data/                    # Dataset utilities
-│   │   ├── dataset.py          # MaxSightDataset
-│   │   ├── data_pipeline.py    # Data loader creation
-│   │   ├── advanced_augmentation.py
-│   │   └── multi_modal_augment.py
-│   │
-│   ├── retrieval/               # Retrieval system (advisory only)
-│   │   ├── encoders/           # Feature encoders
-│   │   ├── indexing/           # FAISS indexing
-│   │   └── retrieval/         # Two-stage retrieval
-│   │
-│   ├── therapy/                 # Therapy system
-│   │   ├── task_generator.py
-│   │   └── session_manager.py
-│   │
-│   ├── optimization/            # Mobile optimizations
-│   │   └── mobile_optimizations.py
-│   │
-│   ├── evaluation/              # Evaluation metrics
-│   │   └── metrics.py
-│   │
-│   └── utils/                   # Utilities
-│       ├── preprocessing.py
-│       ├── output_scheduler.py
-│       └── ...
-│
-├── scripts/                     # Training & data scripts
-│   ├── run_production_training.sh  # One-shot: env → data check → optional validation → train → optional export
-│   ├── validate_data_pipeline.py  # Phase 3: data pipeline + augmentation + class-weights validation
-│   ├── train_maxsight.py       # Full training (use --train-annotation, --val-annotation, --image-dir)
-│   ├── AutoMLType.py            # Optuna hyperparameter tuning; writes best_hyperparameters.json
-│   ├── smoke_train.py          # Smoke training (proof of life; tier: T0_BASELINE_CNN, T2_HYBRID_VIT, etc.)
-│   ├── gather_training_data.py # One-time: download COCO (optional), extract, create train/val/test splits
-│
-├── tests/                       # Test suite
-│   ├── test_phase0_backbone.py
-│   ├── test_phase1_fusion.py
-│   ├── test_phase2_heads.py
-│   ├── test_phase3_retrieval.py
-│   ├── test_phase4_knowledge.py
-│   ├── test_phase5_training.py
-│   └── ...
-│
-├── docs/                        # Documentation
-│   ├── architecture.md          # Model and system architecture
-│   ├── caching.md               # Caching (Redis, usage)
-│   ├── downloads.md             # Dataset and asset downloads
-│   ├── status.md                # Project status and health
-│   ├── therapy_system.md        # Therapy sessions and tasks
-│   ├── training_architecture.md # Training loop, losses, config
-│   ├── training-data-loading.md # Data pipeline and dataset
-│   └── transferlearning.md      # Tier transfer and checkpoint loading
-│
-├── checkpoints/                 # Model checkpoints
-├── datasets/                    # Training data
-│   ├── coco_raw/               # Raw COCO dataset
-│   └── cleaned_splits/         # Processed splits
-└── exports/                     # Exported models
-```
-
-### Key Files & Their Purposes
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `ml/models/maxsight_cnn.py` | Main CNN architecture | ✅ Active |
-| `ml/training/train_loop.py` | Production training loop | ✅ Active |
-| `ml/training/task_balancing.py` | GradNorm multi-task balancing | ✅ Active |
-| `ml/training/transfer_learning.py` | T2→T5 transfer logic | ✅ Active |
-| `ml/data/dataset.py` | MaxSightDataset | ✅ Active |
-| `ml/data/data_pipeline.py` | Data loader creation | ✅ Active |
-| `ml/models/backbone/hybrid_backbone.py` | Hybrid CNN-ViT backbone | ✅ Active |
-| `ml/models/temporal/temporal_encoder.py` | Temporal processing | ✅ Active |
-| `ml/models/scene_graph/scene_graph_encoder.py` | Scene graph encoding | ✅ Active |
-| `ml/training/export.py` | Model export (iOS-ready) | ✅ Active |
-| `ml/retrieval` | Retrieval system (advisory) | ✅ Active |
-| `ml/optimization/mobile_optimizations.py` | Mobile optimizations | ✅ Active |
-
----
-
-## 🚀 Current Work & Next Steps
+## Current Work & Next Steps
 
 ### Immediate next steps
 
@@ -2517,7 +2168,7 @@ def get_loss_weights_for_epoch(epoch):
 
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
 ### Prerequisites
 
@@ -2614,7 +2265,7 @@ Use the test suite and training benchmark: `pytest tests/` and `python -m ml.tra
 
 ---
 
-## 🔍 Core Components
+## Core Components
 
 ### 1. MaxSightCNN (`ml/models/maxsight_cnn.py`)
 
@@ -2687,7 +2338,7 @@ Use the test suite and training benchmark: `pytest tests/` and `python -m ml.tra
 
 ---
 
-## 🧪 Testing & Validation
+## Testing & Validation
 
 ### Test Suites
 
@@ -2709,21 +2360,6 @@ python scripts/smoke_train.py --tier T2_HYBRID_VIT --epochs 2 --batches 5
 # Benchmark inference (ml/training/benchmark.py)
 python -m ml.training.benchmark
 ```
-
-### Validation Status
-
-✅ **All phases (0-9) complete**  
-✅ **Forward pass validation passed**  
-✅ **Smoke training passed** (loss decreased: 0.7246 → 0.6013)  
-✅ **Function flow verified**  
-✅ **MPS-stable mode implemented**  
-✅ **Device selection policy implemented**  
-✅ **163 tests passing** | 8 skipped | 0 failing
-
----
-
-## 📊 Performance & Safety
-
 ### Performance Targets
 
 - **Stage A Latency**: <150ms (target: <100ms)
@@ -2732,7 +2368,7 @@ python -m ml.training.benchmark
 - **Battery Drain**: <12% per hour normal use
 - **Detection Accuracy**: >85% in varied environments
 
-### Safety Metrics (More Important Than Accuracy)
+### Safety Metrics
 
 - **False Reassurance Rate**: <1% (danger predicted as safe)
 - **Alert Latency**: <200ms (time to first warning)
@@ -2741,33 +2377,6 @@ python -m ml.training.benchmark
 - **Tier 1 Availability**: >99.9% (safety heads never disabled)
 - **Uncertainty Calibration**: Well-calibrated (uncertainty correlates with actual error)
 
-**Why Safety Metrics Matter**: mAP and accuracy don't capture safety. A 95% accurate system that gives false reassurance is worse than an 85% accurate system that's safe.
-
----
-
-## 📦 Deployment & Export
-
-### Quick Links
-
-- **Export for Xcode**: [EXPORT_FOR_XCODE.md](EXPORT_FOR_XCODE.md) - Complete export guide
-- **Deployment**: Run `scripts/export_top7_to_xcode.py` for iOS bundles; see README deployment section.
-- **Training Runbook**: [TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md) - Training commands and monitoring
-- **Pre-Train Checklist**: [PRE_TRAIN_CHECKLIST.md](PRE_TRAIN_CHECKLIST.md) - Verification before training
-- **Web Simulator**: [tools/simulation/README.md](tools/simulation/README.md) - Simulator setup and usage
-
-### Export Formats
-
-- **CoreML**: iOS deployment (primary target)
-- **ExecuTorch (.pte)**: Mobile deployment (recommended for iOS)
-- **JIT (.pt)**: PyTorch mobile fallback
-- **ONNX**: Cross-platform deployment
-
-### Quick Export
-
-**iOS Bundle (recommended - includes everything):**
-```bash
-python scripts/export_for_xcode.py checkpoints/final_model.pt maxsight_ios_bundle
-```
 
 **Individual formats:**
 ```bash
@@ -2792,7 +2401,7 @@ python -m ml.training.export --checkpoint checkpoints/final_model.pt --format ji
 
 ---
 
-## 📚 Documentation
+##  Documentation
 
 ### Documentation (docs/)
 
@@ -3233,639 +2842,5 @@ class CustomAccessibilityLoss(BaseLoss):
         
         total_loss = self.alpha * cls_loss + (1 - self.alpha) * reg_loss
         return total_loss
-```
-
-**Example: Custom Data Augmentation**
-```python
-from ml.data.advanced_augmentation import BaseAugmentation
-
-class CustomAccessibilityAugmentation(BaseAugmentation):
-    """Custom augmentation for accessibility scenarios."""
-    
-    def __call__(self, image, annotations):
-        # Simulate low vision conditions
-        if np.random.rand() > 0.5:
-            # Reduce contrast
-            image = image * 0.7 + 0.15
-        
-        # Add accessibility-specific augmentations
-        # (e.g., simulate glare, simulate tunnel vision)
-        
-        return image, annotations
-```
-
-### Additional Documentation
-
-- **[Training Setup Summary](TRAINING_SETUP_SUMMARY.md)**: Training preparation guide
-- **[What Has Been Done](WHAT_HAS_BEEN_DONE.md)**: Complete accomplishment summary
-- **docs/**: Architecture, caching, downloads, status, therapy, training, transfer learning (see Documentation section above)
-
----
-
-## 👁️ Vision Conditions Supported
-
-1. **Refractive Errors** (myopia, hyperopia, astigmatism, presbyopia)
-2. **Cataracts** (reduced acuity)
-3. **Glaucoma** (peripheral vision loss)
-4. **AMD** (central vision damage)
-5. **Diabetic Retinopathy** (retinal damage, floaters)
-6. **Retinitis Pigmentosa** (night blindness, tunnel vision)
-7. **Color Blindness** (color confusion)
-8. **CVI** (cortical visual impairment)
-9. **Amblyopia** (lazy eye)
-10. **Strabismus** (crossed eyes)
-
----
-
-## 🎯 Key Design Decisions
-
-### Why Two-Stage Inference?
-
-**Problem**: Safety-critical predictions must never be blocked by enhancement features.
-
-**Solution**: Two-stage pipeline with explicit handoff.
-
-**Benefits**:
-- **Safety First**: Stage A always completes (<150ms)
-- **Graceful Degradation**: Stage B can be skipped if needed
-- **Predictable Behavior**: Users know safety features always work
-- **Resource Management**: Stage A gets priority, Stage B is opportunistic
-
-### Why Tiered Head Architecture?
-
-**Problem**: Not all predictions are equal—safety > navigation > enhancement.
-
-**Solution**: Organize heads into 3 tiers by criticality.
-
-**Benefits**:
-- **Safety First**: Tier 1 always runs, never disabled
-- **Graceful Degradation**: If Tier 2/3 fail, Tier 1 continues
-- **Resource Management**: Tier 1 gets priority
-- **Predictable Behavior**: Users know safety features always work
-
-### Why Advisory Retrieval?
-
-**Problem**: Retrieval is powerful but risky if it drives safety decisions.
-
-**Solution**: Make retrieval advisory only—enhances Tier 3 heads, never affects Tier 1 or Tier 2.
-
-**Benefits**:
-- Leverages similar scenes for context
-- Knowledge graph integration
-- More sophisticated descriptions
-- **Never blocks safety**: Tier 1/2 independent of retrieval
-
-**Trade-offs**:
-- Retrieval can't improve safety decisions (by design)
-- Additional inference overhead (but optional)
-
-### Why MPS-Stable Mode?
-
-**Problem**: PyTorch MPS has backward pass bugs in complex models.
-
-**Solution**: MPS-stable mode with edge_attr gradient detachment and CPU fallback for index_add.
-
-**Benefits**:
-- Allows local development on Apple Silicon
-- Forward pass works fine
-- Training possible (with trade-offs)
-
-**Trade-offs**:
-- Edge learning disabled in MPS-stable mode
-- Use cloud GPU for production training
-
-See **docs/status.md** for device and compatibility notes.
-
----
-
-## 📄 License
-
-See [LICENSE](LICENSE) file.
-
----
-
-## 🤝 Contributing
-
-This is a research prototype. For questions or contributions, please refer to the documentation in `docs/`.
-
----
-
-## 🙏 Acknowledgments
-
-MaxSight 3.0 is designed based on accessibility research and barrier-removal methods. The system implements condition-specific adaptations and multimodal communication strategies to support users with vision and hearing disabilities.
-
----
-
-**Status**: 🟢 Active Development  
-**Timeline**: Phases 0-9 Complete | Ready for Training Phase  
-**Platform**: iOS (iOS 17+)  
-**Tech Stack**: PyTorch, ExecuTorch, CoreML, FAISS, PyTorch Geometric
-
----
-
-## 📝 Recent Updates
-
-- ✅ **Phases 0-9 Complete**: All components implemented
-- ✅ **Scripts**: `train_maxsight.py`, `smoke_train.py`, `AutoMLType.py`, `gather_training_data.py`, `export_top7_to_xcode.py`; docs in **docs/** (architecture, status, training, etc.)
-- ✅ **Export CLI**: `python -m ml.training.export --checkpoint ... --format jit|onnx|coreml|executorch --output ...`
-- ✅ **Checkpoint loading**: Web simulator and inference engine support `model_checkpoint_path` / checkpoint path for trained models
-- ✅ **Deployment flow**: End-to-end path (train → checkpoint → export → simulator) documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- ✅ **Forward Pass Validation**: All tiers T0-T5 covered by tests and `ml.training.benchmark`
-- ✅ **Smoke Training**: Proof of life passed (loss decreased)
-- ✅ **Device selection**: Automatic CPU/GPU where applicable; see **docs/status.md**
-- ✅ **MPS-Stable Mode**: Apple Silicon development support
-- ✅ **Training Framework Fixes**: EMA, optimizer state, validation safety
-- ✅ **Data Pipeline**: Annotation-based training (`--train-annotation`, `--val-annotation`, `--image-dir`); no `--config`
-- 🔄 **Full training**: Use CUDA GPU; run `scripts/gather_training_data.py` then `scripts/train_maxsight.py` with your data paths
-
----
-
-## ⚠️ Warnings & Critical Cautions
-
-**Production-Ready Checklist** | **Common Pitfalls & Solutions**
-
-This section documents all known warnings, limitations, and critical caution points discovered during development. **Review this section before deploying to production.**
-
----
-
-### Quick Reference: All Warnings & Fixes
-
-| # | Category | Warning | Impact | Fix | Priority |
-|---|----------|---------|--------|-----|----------|
-| 1 | **Inference** | GPU latency measurement inaccurate | Underreported latency | Use `torch.cuda.synchronize()` | 🔴 High |
-| 2 | **CoreML Export** | Dynamic input shapes cause runtime errors | Export fails or crashes | Explicitly define input shapes | 🔴 High |
-| 3 | **GradNorm** | `retain_graph=True` increases memory | OOM errors | Only set when necessary | 🟡 Medium |
-| 4 | **Optimization** | Post-pruning/distillation accuracy drop | Model performance degrades | Fine-tune after optimization | 🔴 High |
-| 5 | **Augmentation** | Pixel scaling can overflow | Invalid image values | Normalize before scaling | 🟡 Medium |
-| 6 | **MPS/Apple Silicon** | Edge learning disabled in MPS mode | Reduced graph learning | Use cloud GPU for production | 🟡 Medium |
-| 7 | **MPS/Apple Silicon** | CPU fallback for `index_add` slows training | Training bottlenecks | Use cloud GPU for training | 🟡 Medium |
-| 8 | **Two-Stage Inference** | Stage B skipping too frequent | Missing context features | Tune thresholds appropriately | 🟡 Medium |
-| 9 | **Code Organization** | Mixed inference/export scripts | Debugging confusion | Separate scripts by purpose | 🟢 Low |
-
----
-
-### 1️⃣ Inference Module - GPU Latency Measurement
-
-**⚠️ Warning**: Latency measurement may be inaccurate on GPU
-
-**Problem**:
-```python
-# INCORRECT: May underreport GPU time
-start_time = time.perf_counter()
-outputs = model(images)
-latency = (time.perf_counter() - start_time) * 1000  # ms
-```
-
-**Why**: `time.perf_counter()` measures CPU time. GPU operations are asynchronous, so the timer stops before GPU work completes.
-
-**Impact**: 
-- Underreported latency (can be 50-200ms off)
-- Incorrect performance metrics
-- Stage B decision logic may fail (thinks Stage A is fast when it's not)
-
-**✅ Fix**:
-```python
-# CORRECT: Synchronize GPU before timing
-if device.type == 'cuda':
-    torch.cuda.synchronize()  # Wait for GPU to finish
-start_time = time.perf_counter()
-outputs = model(images)
-if device.type == 'cuda':
-    torch.cuda.synchronize()  # Wait for GPU to finish
-latency = (time.perf_counter() - start_time) * 1000  # ms
-```
-
-**Implementation Location**: `ml/models/maxsight_cnn.py` - `forward()` method
-
-**Production Impact**: 🔴 **HIGH** - Affects all latency measurements and Stage B decision logic
-
----
-
-### 2️⃣ CoreML Export - Dynamic Input Handling
-
-**⚠️ Warning**: Dynamic input shapes cause runtime errors
-
-**Problem**:
-```python
-# INCORRECT: Variable-length inputs not handled
-coreml_model = ct.convert(model, inputs=[ct.TensorType(name="images", shape=(1, 3, 224, 224))])
-```
-
-**Why**: If audio features or temporal sequences have variable length, CoreML can't handle them at runtime.
-
-**Impact**:
-- Export succeeds but model crashes at runtime
-- iOS app crashes when processing variable-length inputs
-- Silent failures in production
-
-**✅ Fix**:
-```python
-# CORRECT: Explicitly define all input shapes
-coreml_model = ct.convert(
-    model,
-    inputs=[
-        ct.TensorType(name="images", shape=(1, 3, 224, 224)),
-        ct.TensorType(name="audio_features", shape=(1, 128)),  # Fixed length
-    ],
-    outputs=[
-        ct.TensorType(name="detections"),
-        ct.TensorType(name="urgency"),
-    ]
-)
-
-# For variable-length sequences, use fixed max length
-# Pad sequences to max length during preprocessing
-max_audio_length = 128
-audio_features = pad_to_length(audio_features, max_audio_length)
-```
-
-**Implementation Location**: `ml/training/export.py` - `export_to_coreml()` function
-
-**Production Impact**: 🔴 **HIGH** - Can cause iOS app crashes
-
----
-
-### 3️⃣ GradNorm - Memory Usage
-
-**⚠️ Warning**: `retain_graph=True` increases memory usage
-
-**Problem**:
-```python
-# INCORRECT: Always retaining graph
-for i, loss in enumerate(task_losses):
-    loss.backward(retain_graph=True)  # Always True
-```
-
-**Why**: `retain_graph=True` keeps the computation graph in memory for all tasks, even when not needed.
-
-**Impact**:
-- 2-3x higher memory usage
-- OOM errors on smaller GPUs
-- Slower training (more memory pressure)
-
-**✅ Fix**:
-```python
-# CORRECT: Only retain graph when needed
-for i, loss in enumerate(task_losses):
-    is_last_task = (i == len(task_losses) - 1)
-    loss.backward(retain_graph=not is_last_task)  # False for last task
-```
-
-**Alternative Fix** (if you need all gradients):
-```python
-# Compute all gradients in single backward pass
-total_loss = sum(task_weights[i] * loss for i, loss in enumerate(task_losses))
-total_loss.backward()  # Single backward pass, no retain_graph needed
-
-# Then extract per-task gradients (if needed)
-# This requires custom backward hook or separate forward passes
-```
-
-**Implementation Location**: `ml/training/task_balancing.py` - `compute_gradient_norms()` method
-
-**Production Impact**: 🟡 **MEDIUM** - Affects memory usage but not correctness
-
----
-
-### 4️⃣ Performance Optimization - Post-Optimization Fine-Tuning
-
-**⚠️ Warning**: Post-pruning/distillation accuracy drop without fine-tuning
-
-**Problem**:
-```python
-# INCORRECT: Using pruned/distilled model without fine-tuning
-pruned_model = prune_model(model, pruning_ratio=0.3)
-# Model accuracy drops 5-10% immediately
-```
-
-**Why**: Pruning removes parameters, distillation changes model behavior. Both require fine-tuning to recover accuracy.
-
-**Impact**:
-- 5-15% accuracy drop after pruning
-- 2-5% accuracy drop after distillation (if not fine-tuned)
-- Model performance degrades in production
-
-**✅ Fix**:
-```python
-# CORRECT: Fine-tune after optimization
-# 1. Prune model
-pruned_model = prune_model(model, pruning_ratio=0.3)
-
-# 2. Fine-tune pruned model (critical!)
-trainer = TrainingLoop(
-    model=pruned_model,
-    train_loader=train_loader,
-    val_loader=val_loader,
-    config=config
-)
-trainer.train(num_epochs=10)  # Fine-tune for 10-20 epochs
-
-# 3. Verify accuracy recovery
-pruned_accuracy = evaluate(pruned_model, test_loader)
-print(f"Pruned accuracy: {pruned_accuracy:.2f}%")
-assert pruned_accuracy > original_accuracy * 0.95, "Accuracy drop too large"
-```
-
-**For Knowledge Distillation**:
-```python
-# 1. Train student with distillation
-for epoch in range(50):
-    teacher_outputs = teacher(batch['images'])
-    student_outputs = student(batch['images'])
-    
-    # Distillation loss
-    kd_loss = kd_loss_fn(student_outputs, teacher_outputs, targets)
-    kd_loss.backward()
-    optimizer.step()
-
-# 2. Fine-tune student on ground truth only (critical!)
-for epoch in range(10):
-    student_outputs = student(batch['images'])
-    gt_loss = criterion(student_outputs, targets)  # Ground truth only
-    gt_loss.backward()
-    optimizer.step()
-```
-
-**Implementation Location**: `ml/optimization/mobile_optimizations.py` - `prune_model()` function
-
-**Production Impact**: 🔴 **HIGH** - Model performance degrades without fine-tuning
-
----
-
-### 5️⃣ Advanced Usage - Augmentation Pixel Scaling
-
-**⚠️ Warning**: Direct pixel scaling can overflow if image isn't normalized
-
-**Problem**:
-```python
-# INCORRECT: May overflow if image not normalized
-image = image * 0.7 + 0.15  # Assumes image in [0, 1]
-# If image in [0, 255], result is [0, 178.5] (invalid)
-```
-
-**Why**: Different image formats have different ranges:
-- Normalized: `[0, 1]` (float32)
-- Standard: `[0, 255]` (uint8)
-- Scaled incorrectly can produce invalid values
-
-**Impact**:
-- Invalid pixel values (negative or >255)
-- Model crashes or produces garbage outputs
-- Silent failures in production
-
-**✅ Fix**:
-```python
-# CORRECT: Normalize before scaling
-def safe_pixel_scaling(image, scale=0.7, offset=0.15):
-    # Ensure image is in [0, 1] range
-    if image.dtype == torch.uint8:
-        image = image.float() / 255.0
-    elif image.max() > 1.0:
-        image = image / 255.0
-    
-    # Apply scaling
-    image = image * scale + offset
-    
-    # Clamp to valid range
-    image = torch.clamp(image, 0.0, 1.0)
-    
-    return image
-
-# Usage
-image = safe_pixel_scaling(image, scale=0.7, offset=0.15)
-```
-
-**Alternative Fix** (use torch operations):
-```python
-# CORRECT: Use torch operations that handle dtype automatically
-image = torch.clamp(image * 0.7 + 0.15, 0.0, 1.0)
-```
-
-**Implementation Location**: `ml/data/advanced_augmentation.py` - Custom augmentation functions
-
-**Production Impact**: 🟡 **MEDIUM** - Can cause model failures but easy to fix
-
----
-
-### 6️⃣ MPS / Apple Silicon - Edge Learning Disabled
-
-**⚠️ Warning**: Gradient detachment in MPS-stable mode disables edge learning
-
-**Problem**:
-```python
-# In MPS-stable mode
-if self.mps_stable_mode:
-    edge_attr = edge_attr.detach()  # Gradients detached
-    # Graph edges don't learn
-```
-
-**Why**: PyTorch MPS has bugs with `index_add` and graph operations. Detaching gradients prevents crashes but disables learning.
-
-**Impact**:
-- Graph neural network components don't learn
-- Scene graph encoder has reduced effectiveness
-- Spatial relation learning is disabled
-
-**✅ Fix**:
-```python
-# Option 1: Use cloud GPU for training (recommended)
-device = torch.device('cuda')  # Cloud GPU
-model = MaxSightCNN(..., mps_stable_mode=False)
-
-# Option 2: Accept reduced learning (for local development only)
-# Graph components will have fixed weights
-model = MaxSightCNN(..., mps_stable_mode=True)
-# Note: Only use for forward pass testing, not production training
-```
-
-**Implementation Location**: `ml/models/scene_graph/scene_graph_encoder.py` - MPS-stable mode handling
-
-**Production Impact**: 🟡 **MEDIUM** - Affects graph learning but not core detection
-
----
-
-### 7️⃣ MPS / Apple Silicon - CPU Fallback Performance
-
-**⚠️ Warning**: CPU fallback for `index_add` slows training
-
-**Problem**:
-```python
-# In MPS-stable mode
-if device.type == 'mps':
-    # index_add not supported on MPS, fallback to CPU
-    result = index_add_cpu_fallback(...)  # Slow!
-```
-
-**Why**: MPS doesn't support `index_add` operation. Code falls back to CPU, which is much slower.
-
-**Impact**:
-- 5-10x slower training on Apple Silicon
-- Training bottlenecks on graph operations
-- Not suitable for production training
-
-**✅ Fix**:
-```python
-# Use cloud GPU for training (required for production)
-device = torch.device('cuda')  # Cloud GPU
-# MPS only for local development/forward pass testing
-```
-
-**Implementation Location**: `ml/models/scene_graph/scene_graph_encoder.py` - `index_add` fallback
-
-**Production Impact**: 🟡 **MEDIUM** - Affects training speed but not correctness
-
----
-
-### 8️⃣ Two-Stage Inference - Stage B Skipping
-
-**⚠️ Warning**: Stage B skipping too frequent if thresholds too strict
-
-**Problem**:
-```python
-# Too strict thresholds
-if latency > 150ms or uncertainty > 0.5:  # Too strict!
-    skip_stage_b = True
-```
-
-**Why**: If thresholds are too strict, Stage B is skipped too often, missing context features.
-
-**Impact**:
-- Missing motion tracking
-- Missing scene descriptions
-- Missing OCR results
-- Reduced system capabilities
-
-**✅ Fix**:
-```python
-# CORRECT: Tune thresholds based on actual performance
-# Measure Stage A latency distribution
-latencies = []
-for batch in test_loader:
-    start = time.perf_counter()
-    outputs = model.stage_a_forward(batch['images'])
-    if device.type == 'cuda':
-        torch.cuda.synchronize()
-    latency = (time.perf_counter() - start) * 1000
-    latencies.append(latency)
-
-# Set threshold at 95th percentile
-latency_threshold = np.percentile(latencies, 95)  # e.g., 200ms
-
-# Set uncertainty threshold based on validation
-uncertainty_threshold = 0.7  # Tune based on validation performance
-
-# Use tuned thresholds
-if latency > latency_threshold or uncertainty > uncertainty_threshold:
-    skip_stage_b = True
-```
-
-**Implementation Location**: `ml/models/maxsight_cnn.py` - `forward()` method, decision point
-
-**Production Impact**: 🟡 **MEDIUM** - Affects feature availability but not safety
-
----
-
-### 9️⃣ Code Organization - Script Separation
-
-**⚠️ Warning**: Mixed inference/export scripts can cause confusion
-
-**Problem**:
-```python
-# Script that does everything (confusing)
-def main():
-    if args.mode == 'inference':
-        run_inference()
-    elif args.mode == 'export':
-        export_model()
-    elif args.mode == 'train':
-        train_model()
-    # ... 10 more modes
-```
-
-**Why**: Mixing concerns makes debugging harder and scripts harder to maintain.
-
-**Impact**:
-- Harder to debug (which code path is failing?)
-- Harder to maintain (large files)
-- Harder to test (many code paths)
-
-**✅ Fix**:
-```python
-# CORRECT: Separate scripts by purpose
-# scripts/inference.py - Only inference
-# scripts/export.py - Only export
-# scripts/train.py - Only training
-# scripts/benchmark.py - Only benchmarking
-
-# Each script has single, clear purpose
-# Easier to debug, test, and maintain
-```
-
-**Current Status**: ✅ **Already separated** - Scripts are organized by purpose:
-- `scripts/train_maxsight.py` - Full training
-- `scripts/smoke_train.py` - Smoke training
-- `scripts/AutoMLType.py` - Hyperparameter tuning
-- `scripts/gather_training_data.py` - Data preparation
-- `python -m ml.training.export` - Export (JIT/ONNX/CoreML/ExecuTorch)
-- `pytest tests/` and `ml/training/benchmark.py` - Validation and benchmarking
-
-**Production Impact**: 🟢 **LOW** - Code quality issue, not correctness issue
-
----
-
-### Production Deployment Checklist
-
-Before deploying to production, verify:
-
-- [ ] **GPU latency measurement**: Using `torch.cuda.synchronize()` for accurate timing
-- [ ] **CoreML export**: All input shapes explicitly defined, no variable-length inputs
-- [ ] **GradNorm memory**: `retain_graph` only set when necessary
-- [ ] **Post-optimization**: Models fine-tuned after pruning/distillation
-- [ ] **Augmentation**: Pixel scaling normalizes images before operations
-- [ ] **MPS mode**: Using cloud GPU for production training (not MPS)
-- [ ] **Stage B thresholds**: Tuned based on actual performance data
-- [ ] **Code organization**: Scripts separated by purpose
-
----
-
-### Quick Fix Reference
-
-**For GPU Latency**:
-```python
-if device.type == 'cuda':
-    torch.cuda.synchronize()
-start = time.perf_counter()
-# ... inference ...
-if device.type == 'cuda':
-    torch.cuda.synchronize()
-latency = (time.perf_counter() - start) * 1000
-```
-
-**For CoreML Export**:
-```python
-inputs = [ct.TensorType(name="images", shape=(1, 3, 224, 224))]
-# Add all inputs explicitly, no variable-length
-```
-
-**For GradNorm Memory**:
-```python
-retain_graph = (i < len(task_losses) - 1)  # False for last task
-loss.backward(retain_graph=retain_graph)
-```
-
-**For Post-Optimization**:
-```python
-# Always fine-tune after pruning/distillation
-trainer.train(num_epochs=10)  # Minimum 10 epochs
-```
-
-**For Pixel Scaling**:
-```python
-image = torch.clamp(image * scale + offset, 0.0, 1.0)
-```
-
----
-
-**For detailed information on any specific aspect, please refer to the documentation in the `docs/` directory.**
-
-VISIBLE_TEST_9999
+# This line is used because of stubborn git commands
+## 
