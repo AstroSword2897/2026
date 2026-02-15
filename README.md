@@ -251,7 +251,7 @@ MaxSight answers this by implementing four barrier-removal methods from accessib
 
 **Impact**: System can be evaluated across multiple dimensions.
 
-### Recent Fixes & Improvements (2025-01-30)
+### Recent Fixes & Improvements (2026-01-30)
 
 **Test Suite Fixes**:
 - Fixed 13 test failures (model size updates, API changes, missing methods)
@@ -1991,7 +1991,7 @@ def get_loss_weights_for_epoch(epoch):
 - Integration tests: All passing
 - Performance tests: All passing
 
-**Recent Test Fixes** (2025-01-30):
+**Recent Test Fixes** (2026-01-30):
 - Fixed 13 test failures (model size updates, API changes, missing methods)
 - Updated model size thresholds for 250M parameter model
 - Fixed training loss API tests (MAE, SimCLR, Knowledge Distillation, EWC)
